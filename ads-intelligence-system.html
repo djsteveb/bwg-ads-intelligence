@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ads Intelligence System — Product Blueprint</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=IBM+Plex+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink: #0f1117;
+    --ink2: #3a3d4a;
+    --ink3: #6b7080;
+    --surface: #f5f4f0;
+    --surface2: #ebe9e3;
+    --border: #d8d5cc;
+    --gold: #b8860b;
+    --gold-light: #f5e9c0;
+    --gold-mid: #d4a017;
+    --teal: #0d6e6e;
+    --teal-light: #d1ede8;
+    --coral: #c0392b;
+    --coral-light: #fde8e6;
+    --slate: #2c3e50;
+    --slate-light: #e8ecf0;
+    --purple: #5b4b8a;
+    --purple-light: #ede8f8;
+    --green: #2d6a4f;
+    --green-light: #d8f3dc;
+    --amber: #d97706;
+    --amber-light: #fef3c7;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Inter', sans-serif;
+    background: var(--surface);
+    color: var(--ink);
+    font-size: 14px;
+    line-height: 1.6;
+  }
+  .masthead {
+    background: var(--ink);
+    color: #f0ede6;
+    padding: 56px 48px 48px;
+    position: relative;
+    overflow: hidden;
+  }
+  .masthead::before {
+    content: '';
+    position: absolute;
+    top: 0; right: 0; bottom: 0;
+    width: 40%;
+    background: repeating-linear-gradient(-45deg, transparent, transparent 8px, rgba(255,255,255,0.025) 8px, rgba(255,255,255,0.025) 9px);
+  }
+  .masthead-label { font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 0.15em; color: var(--gold-mid); text-transform: uppercase; margin-bottom: 16px; }
+  .masthead h1 { font-family: 'DM Serif Display', serif; font-size: 48px; font-weight: 400; line-height: 1.1; color: #f5f2eb; margin-bottom: 16px; max-width: 640px; }
+  .masthead h1 em { color: var(--gold-mid); font-style: italic; }
+  .masthead p { font-size: 15px; color: rgba(240,237,230,0.7); max-width: 560px; line-height: 1.7; }
+  .masthead-meta { display: flex; gap: 32px; margin-top: 32px; }
+  .meta-item { display: flex; flex-direction: column; gap: 2px; }
+  .meta-label { font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.1em; color: rgba(240,237,230,0.45); text-transform: uppercase; }
+  .meta-value { font-size: 13px; color: rgba(240,237,230,0.8); font-weight: 500; }
+  .section { padding: 56px 48px; border-bottom: 1px solid var(--border); }
+  .section:last-child { border-bottom: none; }
+  .section-header { display: flex; align-items: baseline; gap: 16px; margin-bottom: 32px; }
+  .section-num { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--ink3); letter-spacing: 0.05em; flex-shrink: 0; }
+  .section-title { font-family: 'DM Serif Display', serif; font-size: 28px; font-weight: 400; color: var(--ink); }
+  .section-sub { font-size: 14px; color: var(--ink3); margin-top: -24px; margin-bottom: 28px; max-width: 640px; line-height: 1.7; }
+  .phase-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; margin-bottom: 24px; }
+  .phase-card { background: white; border: 1px solid var(--border); border-radius: 12px; padding: 24px; }
+  .phase-card.gold { border-top: 3px solid var(--gold-mid); }
+  .phase-card.teal { border-top: 3px solid var(--teal); }
+  .phase-card.coral { border-top: 3px solid var(--coral); }
+  .phase-card.slate { border-top: 3px solid var(--slate); }
+  .phase-card.purple { border-top: 3px solid var(--purple); }
+  .phase-card.green { border-top: 3px solid var(--green); }
+  .phase-card.amber { border-top: 3px solid var(--amber); }
+  .phase-badge { font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; padding: 3px 8px; border-radius: 4px; display: inline-block; margin-bottom: 12px; }
+  .phase-badge.gold { background: var(--gold-light); color: var(--gold); }
+  .phase-badge.teal { background: var(--teal-light); color: var(--teal); }
+  .phase-badge.coral { background: var(--coral-light); color: var(--coral); }
+  .phase-badge.slate { background: var(--slate-light); color: var(--slate); }
+  .phase-badge.purple { background: var(--purple-light); color: var(--purple); }
+  .phase-badge.green { background: var(--green-light); color: var(--green); }
+  .phase-badge.amber { background: var(--amber-light); color: var(--amber); }
+  .phase-card h3 { font-size: 16px; font-weight: 600; margin-bottom: 8px; color: var(--ink); line-height: 1.3; }
+  .phase-card p { font-size: 13px; color: var(--ink3); margin-bottom: 16px; line-height: 1.6; }
+  .phase-items { list-style: none; display: flex; flex-direction: column; gap: 6px; }
+  .phase-items li { font-size: 12.5px; color: var(--ink2); padding-left: 14px; position: relative; line-height: 1.5; }
+  .phase-items li::before { content: '›'; position: absolute; left: 0; color: var(--ink3); font-weight: 600; }
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  .three-col { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+  .source-row { display: flex; flex-direction: column; gap: 10px; margin-bottom: 24px; }
+  .source-item { display: flex; align-items: flex-start; gap: 14px; background: white; border: 1px solid var(--border); border-radius: 8px; padding: 14px 18px; }
+  .source-icon { width: 32px; height: 32px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0; font-family: 'IBM Plex Mono', monospace; font-weight: 500; }
+  .source-icon.google { background: #e8f0fe; color: #1a73e8; }
+  .source-icon.meta { background: #e8f4ff; color: #1877f2; }
+  .source-icon.bing { background: #e8f5e9; color: #00809d; }
+  .source-icon.linkedin { background: #e8f0f8; color: #0a66c2; }
+  .source-icon.tiktok { background: #f0e8f5; color: #6a0dad; }
+  .source-icon.other { background: var(--surface2); color: var(--ink3); }
+  .source-icon.hipaa { background: #fff0f0; color: #c0392b; }
+  .source-name { font-weight: 600; font-size: 13px; margin-bottom: 2px; }
+  .source-desc { font-size: 12px; color: var(--ink3); line-height: 1.5; }
+  .compliance-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+  .compliance-card { border: 1px solid var(--border); border-radius: 8px; padding: 16px; background: white; }
+  .compliance-tag { font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 8px; display: block; font-weight: 500; }
+  .tag-red { color: var(--coral); } .tag-amber { color: var(--amber); } .tag-teal { color: var(--teal); } .tag-purple { color: var(--purple); }
+  .compliance-card h4 { font-size: 13px; font-weight: 600; margin-bottom: 8px; }
+  .compliance-items { list-style: none; display: flex; flex-direction: column; gap: 4px; }
+  .compliance-items li { font-size: 12px; color: var(--ink2); padding-left: 12px; position: relative; }
+  .compliance-items li::before { content: '·'; position: absolute; left: 0; color: var(--ink3); }
+  .pipeline { display: flex; flex-direction: column; gap: 0; position: relative; }
+  .pipeline-step { display: grid; grid-template-columns: 48px 1fr; gap: 20px; position: relative; }
+  .pipeline-step:not(:last-child)::after { content: ''; position: absolute; left: 24px; top: 40px; bottom: -16px; width: 1px; background: var(--border); z-index: 0; }
+  .step-num { width: 40px; height: 40px; border-radius: 50%; background: var(--ink); color: #f5f2eb; display: flex; align-items: center; justify-content: center; font-family: 'IBM Plex Mono', monospace; font-size: 12px; font-weight: 500; flex-shrink: 0; position: relative; z-index: 1; }
+  .step-content { background: white; border: 1px solid var(--border); border-radius: 10px; padding: 18px 20px; margin-bottom: 16px; }
+  .step-title { font-weight: 600; font-size: 14px; margin-bottom: 4px; }
+  .step-desc { font-size: 12.5px; color: var(--ink3); line-height: 1.6; margin-bottom: 10px; }
+  .step-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+  .tag { font-size: 11px; padding: 2px 8px; border-radius: 4px; border: 1px solid var(--border); color: var(--ink2); font-family: 'IBM Plex Mono', monospace; }
+  .tag.async { background: var(--gold-light); border-color: var(--gold-mid); color: var(--gold); }
+  .tag.ai { background: var(--purple-light); border-color: var(--purple); color: var(--purple); }
+  .tag.auto { background: var(--teal-light); border-color: var(--teal); color: var(--teal); }
+  .tag.email { background: var(--slate-light); border-color: var(--slate); color: var(--slate); }
+  .tag.manual { background: var(--surface2); color: var(--ink3); }
+  .report-card { background: white; border: 1px solid var(--border); border-radius: 12px; padding: 24px; }
+  .report-audience { font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 10px; display: block; }
+  .report-card h3 { font-size: 15px; font-weight: 600; margin-bottom: 8px; }
+  .report-card p { font-size: 12.5px; color: var(--ink3); margin-bottom: 14px; line-height: 1.6; }
+  .report-sections { list-style: none; display: flex; flex-direction: column; gap: 5px; border-top: 1px solid var(--surface2); padding-top: 12px; }
+  .report-sections li { font-size: 12px; color: var(--ink2); display: flex; align-items: center; gap: 8px; }
+  .report-sections li::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--border); flex-shrink: 0; }
+  .ideas-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; }
+  .idea-card { background: white; border: 1px solid var(--border); border-radius: 10px; padding: 18px 20px; }
+  .idea-category { font-family: 'IBM Plex Mono', monospace; font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink3); margin-bottom: 8px; }
+  .idea-card h4 { font-size: 13px; font-weight: 600; margin-bottom: 6px; color: var(--ink); }
+  .idea-card p { font-size: 12px; color: var(--ink3); line-height: 1.6; }
+  .funnel { display: flex; flex-direction: column; gap: 2px; }
+  .funnel-tier { padding: 16px 24px; border-radius: 8px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+  .funnel-tier:nth-child(1) { background: var(--ink); color: #f5f2eb; }
+  .funnel-tier:nth-child(2) { background: #2c3e50; color: #f0ede6; }
+  .funnel-tier:nth-child(3) { background: #3d5166; color: #e8ecf0; }
+  .funnel-tier:nth-child(4) { background: #546e7a; color: #e0e8ec; }
+  .funnel-tier:nth-child(5) { background: #607d8b; color: #dce8ec; }
+  .funnel-label { font-weight: 600; font-size: 13px; }
+  .funnel-desc { font-size: 12px; opacity: 0.75; margin-top: 2px; }
+  .funnel-price { font-family: 'IBM Plex Mono', monospace; font-size: 12px; background: rgba(255,255,255,0.15); padding: 4px 10px; border-radius: 4px; white-space: nowrap; flex-shrink: 0; }
+  .highlight-box { background: var(--gold-light); border: 1px solid #d4a017; border-radius: 8px; padding: 16px 20px; margin-bottom: 24px; }
+  .highlight-box p { font-size: 13px; color: var(--gold); font-weight: 500; line-height: 1.6; }
+  .footer { background: var(--ink); color: rgba(240,237,230,0.5); padding: 24px 48px; font-family: 'IBM Plex Mono', monospace; font-size: 11px; display: flex; justify-content: space-between; align-items: center; }
+  @media (max-width: 700px) {
+    .masthead { padding: 36px 24px; } .masthead h1 { font-size: 32px; } .section { padding: 36px 24px; }
+    .two-col, .three-col { grid-template-columns: 1fr; } .footer { padding: 20px 24px; flex-direction: column; gap: 8px; text-align: center; }
+  }
+</style>
+</head>
+<body>
+<div class="masthead">
+  <div class="masthead-label">Treatment Center Agency · Internal Product Blueprint</div>
+  <h1>Ads <em>Intelligence</em><br>System</h1>
+  <p>A multi-phase audit and intelligence platform that begins with a URL and expands into a full patient journey and admissions performance review — converting prospects into managed-service clients.</p>
+  <div class="masthead-meta">
+    <div class="meta-item"><span class="meta-label">Phases</span><span class="meta-value">7 Stages</span></div>
+    <div class="meta-item"><span class="meta-label">Ad Sources</span><span class="meta-value">6+ Platforms</span></div>
+    <div class="meta-item"><span class="meta-label">Report Types</span><span class="meta-value">5 Audiences</span></div>
+    <div class="meta-item"><span class="meta-label">Compliance Checks</span><span class="meta-value">HIPAA · Platform · Legal</span></div>
+  </div>
+</div>
+<div class="section">
+  <div class="section-header"><span class="section-num">00</span><h2 class="section-title">System Overview</h2></div>
+  <div class="highlight-box"><p>The funnel converts a cold URL entry into a fully-audited account with access, exports, and a clear path to managed services. Each phase can be completed across sessions via email-based async flow — no single visit required.</p></div>
+  <div class="phase-grid">
+    <div class="phase-card gold"><span class="phase-badge gold">Phase 1</span><h3>Discovery Engine</h3><p>URL entry triggers automated intel gathering on the business, its digital footprint, and ad account signals.</p><ul class="phase-items"><li>Business profile & NAP extraction</li><li>Google Business Profile match</li><li>Social presence detection</li><li>Ad account signals across platforms</li><li>Domain / hosting intel</li></ul></div>
+    <div class="phase-card teal"><span class="phase-badge teal">Phase 2</span><h3>Ad Library Surface</h3><p>Pull active and historical ads from every major platform's transparency tool.</p><ul class="phase-items"><li>Google Ads Transparency</li><li>Meta Ad Library (with screenshots)</li><li>LinkedIn Ad Library</li><li>TikTok Creative Center</li><li>Bing / Microsoft Ads transparency</li></ul></div>
+    <div class="phase-card coral"><span class="phase-badge coral">Phase 3</span><h3>Compliance Analysis</h3><p>AI-driven text and image review against HIPAA, platform health rules, and treatment advertising law.</p><ul class="phase-items"><li>Claims & disclaimer audit</li><li>Before/after image detection</li><li>LegitScript signal check</li><li>42 CFR Part 2 flags</li><li>Platform policy violations</li></ul></div>
+    <div class="phase-card slate"><span class="phase-badge slate">Phase 4</span><h3>Verification & Expansion</h3><p>Show found ads for confirmation and discover additional accounts, agencies, or shadow campaigns.</p><ul class="phase-items"><li>Screenshot gallery for review</li><li>Multi-account / page discovery</li><li>Agency / third-party account check</li><li>Business Manager mapping</li><li>Dark post / boosted post surface</li></ul></div>
+    <div class="phase-card purple"><span class="phase-badge purple">Phase 5</span><h3>Access Request Funnel</h3><p>Per-platform instructions, templates, and email sequences to collect read-only and export access.</p><ul class="phase-items"><li>Templated instruction emails</li><li>Grant access guides per platform</li><li>Export instruction generator</li><li>Upload portal + email intake</li><li>Follow-up automation sequences</li></ul></div>
+    <div class="phase-card green"><span class="phase-badge green">Phase 6</span><h3>Deep Audit & Spider</h3><p>With account access and exports in hand: spider landing pages, check pixels, performance, and compliance.</p><ul class="phase-items"><li>Landing page screenshot + archive</li><li>Tracking / pixel audit (HIPAA)</li><li>Core Web Vitals & speed</li><li>Form functionality checks</li><li>Ad → page message match score</li></ul></div>
+    <div class="phase-card amber"><span class="phase-badge amber">Phase 7</span><h3>Journey & Admissions Audit</h3><p>Full funnel review: awareness to admissions, call quality, CRM, and attribution modeling.</p><ul class="phase-items"><li>Sales / intake call audit</li><li>Call tracking & script analysis</li><li>Awareness vs. admissions attribution</li><li>CRM data integration</li><li>Coaching gap identification</li></ul></div>
+  </div>
+</div>
+<div class="section">
+  <div class="section-header"><span class="section-num">01</span><h2 class="section-title">Discovery Engine</h2></div>
+  <p class="section-sub">Enter a URL. The system auto-discovers everything knowable about the business's digital footprint before touching a single ad platform.</p>
+  <div class="two-col">
+    <div><div class="source-row">
+      <div class="source-item"><div class="source-icon google">G</div><div><div class="source-name">Google Business Profile</div><div class="source-desc">Match domain → GBP listing. Extract address, phone, category, reviews, business manager signals, service areas.</div></div></div>
+      <div class="source-item"><div class="source-icon other">W</div><div><div class="source-name">WHOIS & DNS Lookup</div><div class="source-desc">Registrar, creation date, nameservers, MX records. Flag if domain is too new (red flag in addiction marketing).</div></div></div>
+      <div class="source-item"><div class="source-icon other">NAP</div><div><div class="source-name">NAP Consistency Extraction</div><div class="source-desc">Pull business name, address, phone from site footer, schema.org markup, and contact pages. Cross-check consistency.</div></div></div>
+      <div class="source-item"><div class="source-icon other">🔗</div><div><div class="source-name">Social Profile Detection</div><div class="source-desc">Discover linked FB page, IG profile, LinkedIn page, TikTok, YouTube. Note connected pixel IDs in page source.</div></div></div>
+    </div></div>
+    <div><div class="source-row">
+      <div class="source-item"><div class="source-icon hipaa">Px</div><div><div class="source-name">Pixel & Tag Detection</div><div class="source-desc">Surface Meta Pixel ID, Google Tag IDs, GTM containers, TikTok pixel, LinkedIn Insight Tag — noted immediately as compliance risk data points.</div></div></div>
+      <div class="source-item"><div class="source-icon other">Sp</div><div><div class="source-name">Tech Stack Fingerprint</div><div class="source-desc">CMS, form tools, chat widgets, call tracking numbers, analytics platforms. Built with Wappalyzer-style detection.</div></div></div>
+      <div class="source-item"><div class="source-icon other">📋</div><div><div class="source-name">LegitScript Status Check</div><div class="source-desc">Search LegitScript database for certification status, past violations. Critical for addiction treatment ad eligibility on Google/Meta.</div></div></div>
+      <div class="source-item"><div class="source-icon other">🏢</div><div><div class="source-name">State Licensure Signals</div><div class="source-desc">Surface state licensing body lookup links for the business's state. Flag if no SAMHSA or state license reference found on site.</div></div></div>
+    </div></div>
+  </div>
+</div>
+<div class="section">
+  <div class="section-header"><span class="section-num">02 / 03</span><h2 class="section-title">Ad Surface & Compliance Analysis</h2></div>
+  <p class="section-sub">Pull ads from transparency libraries, screenshot them, then run both text and AI image analysis against a compliance ruleset tailored for healthcare, addiction treatment, and beauty/wellness advertisers.</p>
+  <div class="two-col" style="margin-bottom: 32px;">
+    <div>
+      <h3 style="font-size:14px;font-weight:600;margin-bottom:14px;color:var(--ink2);text-transform:uppercase;letter-spacing:0.05em;font-family:'IBM Plex Mono',monospace;">Ad Sources</h3>
+      <div class="source-row">
+        <div class="source-item"><div class="source-icon google">G</div><div><div class="source-name">Google Ads Transparency</div><div class="source-desc">Search by domain and advertiser name. Surface search, display, YouTube, and Performance Max ads.</div></div></div>
+        <div class="source-item"><div class="source-icon meta">M</div><div><div class="source-name">Meta Ad Library</div><div class="source-desc">Active + 7-year archive. Pull all active ads by page. Capture images, copy, CTA, run dates, estimated reach, spend range.</div></div></div>
+        <div class="source-item"><div class="source-icon linkedin">Li</div><div><div class="source-name">LinkedIn Ad Library</div><div class="source-desc">Sponsored content, InMail, and dynamic ads. Pull by company page.</div></div></div>
+        <div class="source-item"><div class="source-icon tiktok">Tt</div><div><div class="source-name">TikTok Creative Center</div><div class="source-desc">Search by advertiser. Surface video ads, hooks, and landing URLs.</div></div></div>
+        <div class="source-item"><div class="source-icon bing">Bg</div><div><div class="source-name">Bing / Microsoft Ads</div><div class="source-desc">Live SERP scrape by brand terms. Verify ad copy, extensions, and sitelinks.</div></div></div>
+      </div>
+    </div>
+    <div>
+      <h3 style="font-size:14px;font-weight:600;margin-bottom:14px;color:var(--ink2);text-transform:uppercase;letter-spacing:0.05em;font-family:'IBM Plex Mono',monospace;">Compliance Checks</h3>
+      <div class="compliance-grid" style="grid-template-columns:1fr;">
+        <div class="compliance-card"><span class="compliance-tag tag-red">High Risk — HIPAA / Legal</span><h4>Healthcare Claims & PHI</h4><ul class="compliance-items"><li>PHI or patient story identifiers in ad copy</li><li>Treatment outcome guarantees</li><li>Bait-and-switch or misleading availability claims</li><li>42 CFR Part 2 disclosure violations</li><li>Unlicensed facility implied claims</li></ul></div>
+        <div class="compliance-card"><span class="compliance-tag tag-amber">Platform Policy — Health Category</span><h4>Google / Meta Health Rules</h4><ul class="compliance-items"><li>Non-LegitScript certified addiction treatment ads</li><li>Sensitive health condition targeting signals</li><li>Before/after images (prohibited on Meta for health)</li><li>Missing health claim disclosures</li><li>GDPR / CCPA consent mode absent from landing page</li></ul></div>
+        <div class="compliance-card"><span class="compliance-tag tag-teal">AI Image Analysis</span><h4>Visual Compliance Flags</h4><ul class="compliance-items"><li>Before/after imagery (auto-detected via AI vision)</li><li>Medical imagery implying clinical services not offered</li><li>Stock photo overuse (credibility risk)</li><li>Brand inconsistency across ads</li><li>Missing disclosures on testimonial images</li></ul></div>
+        <div class="compliance-card"><span class="compliance-tag tag-purple">Landing Page Compliance</span><h4>Page-Level Checks</h4><ul class="compliance-items"><li>Privacy policy presence and completeness</li><li>Tracking pixels firing on intake/contact forms</li><li>HIPAA-compliant form handling</li><li>Testimonial FTC disclosure requirements</li><li>SAMHSA / state license numbers displayed</li></ul></div>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="section">
+  <div class="section-header"><span class="section-num">04 / 05</span><h2 class="section-title">Verification & Access Request Funnel</h2></div>
+  <p class="section-sub">A multi-step async flow that crosses sessions and email — shows found ads for confirmation, discovers shadow accounts, then walks their team through granting access or providing exports for each platform.</p>
+  <div class="pipeline">
+    <div class="pipeline-step"><div class="step-num">1</div><div class="step-content"><div class="step-title">Ad Screenshot Gallery — Confirm Found Ads</div><div class="step-desc">Show all surfaced ads with screenshots in a swipeable gallery. User confirms or flags ads they don't recognize.</div><div class="step-tags"><span class="tag auto">Auto</span><span class="tag">Gallery UI</span><span class="tag">Confirm / Flag</span></div></div></div>
+    <div class="pipeline-step"><div class="step-num">2</div><div class="step-content"><div class="step-title">Additional Account Discovery Form</div><div class="step-desc">Capture other FB pages, Business Managers, agency names, Google Ads MCCs. Each entry triggers a new library search pass.</div><div class="step-tags"><span class="tag">Form</span><span class="tag auto">Triggers New Scan</span><span class="tag">Agency Detection</span></div></div></div>
+    <div class="pipeline-step"><div class="step-num">3</div><div class="step-content"><div class="step-title">Access Request Email Generator</div><div class="step-desc">Auto-generate a formatted email per platform they can forward to their ad team with step-by-step access grant instructions.</div><div class="step-tags"><span class="tag email">Email Template</span><span class="tag auto">Per-Platform</span><span class="tag async">Async</span></div></div></div>
+    <div class="pipeline-step"><div class="step-num">4</div><div class="step-content"><div class="step-title">Per-Platform Access Instructions</div><div class="step-desc">In-app step-by-step instructions: Google Ads, Meta Ads Manager, GA4, Bing, LinkedIn, Search Console, CallRail / CTM.</div><div class="step-tags"><span class="tag">Instructions</span><span class="tag async">Async Return</span></div></div></div>
+    <div class="pipeline-step"><div class="step-num">5</div><div class="step-content"><div class="step-title">Export Upload Portal + Email Intake</div><div class="step-desc">Export instructions per platform. Upload portal or email intake. System parses exports and runs audit against structured data.</div><div class="step-tags"><span class="tag">Upload Portal</span><span class="tag email">Email Intake</span><span class="tag auto">Auto-Parse</span></div></div></div>
+    <div class="pipeline-step"><div class="step-num">6</div><div class="step-content"><div class="step-title">Follow-Up Automation Sequences</div><div class="step-desc">Day 1, Day 3 (compliance teaser), Day 7 final. Each email links back to resume the audit session.</div><div class="step-tags"><span class="tag async">Async</span><span class="tag email">Email Drip</span><span class="tag auto">Automated</span></div></div></div>
+  </div>
+</div>
+<div class="section">
+  <div class="section-header"><span class="section-num">06</span><h2 class="section-title">Landing Page Spider & Deep Audit</h2></div>
+  <p class="section-sub">Spider every landing URL in their ad accounts. Screenshot, archive, and run a full technical and compliance pass on each page.</p>
+  <div class="three-col">
+    <div class="compliance-card"><span class="compliance-tag tag-teal">Technical Checks</span><h4>Performance & Health</h4><ul class="compliance-items"><li>Core Web Vitals (LCP, CLS, FID)</li><li>Mobile responsiveness</li><li>SSL / HTTPS validity</li><li>Page load time</li><li>Broken links & 404s</li><li>Form submission testing</li><li>Phone number click-to-call</li><li>Chat widget functionality</li></ul></div>
+    <div class="compliance-card"><span class="compliance-tag tag-red">Compliance & Privacy</span><h4>HIPAA & Platform Rules</h4><ul class="compliance-items"><li>Pixel firing on intake pages</li><li>Remarketing on sensitive pages</li><li>Google Analytics on /thank-you</li><li>Cookie consent banner presence</li><li>Privacy policy completeness</li><li>Testimonial FTC disclosures</li><li>Accessibility (ADA/WCAG basics)</li><li>Session recording on PHI pages</li></ul></div>
+    <div class="compliance-card"><span class="compliance-tag tag-purple">Message Match</span><h4>Ad → Page Alignment</h4><ul class="compliance-items"><li>Headline message match score</li><li>CTA consistency (ad vs. page)</li><li>Insurance claim accuracy</li><li>Offer / promotion continuity</li><li>Trust signal presence</li><li>Accreditation logos visible</li><li>Emergency / crisis CTA</li><li>AI quality score per landing page</li></ul></div>
+  </div>
+</div>
+<div class="section">
+  <div class="section-header"><span class="section-num">07</span><h2 class="section-title">Report Outputs — Five Audiences</h2></div>
+  <p class="section-sub">The same underlying audit data gets sliced into purpose-built reports for each stakeholder.</p>
+  <div class="phase-grid" style="grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));">
+    <div class="report-card"><span class="report-audience" style="color:var(--gold);">Executive / Business Owner</span><h3>The "What Does It Mean" Report</h3><p>Plain-language. Risk score (1–100). Dollar-value estimate of wasted spend. 3 things to fix this week.</p><ul class="report-sections"><li>Overall compliance risk score</li><li>Estimated wasted monthly spend</li><li>Top 3 urgent actions</li><li>Competitive snapshot</li><li>What's working vs. what isn't</li><li>Recommended next engagement</li></ul></div>
+    <div class="report-card"><span class="report-audience" style="color:var(--teal);">CMO / Marketing Director</span><h3>The Strategic Performance Report</h3><p>Benchmarks vs. industry. Channel mix analysis. Budget allocation recommendations. Attribution gaps.</p><ul class="report-sections"><li>Platform budget allocation audit</li><li>Industry benchmark comparisons</li><li>Audience overlap / saturation</li><li>Creative fatigue analysis</li><li>Attribution model gaps</li><li>90-day strategic roadmap</li></ul></div>
+    <div class="report-card"><span class="report-audience" style="color:var(--coral);">Compliance / Legal / Ops</span><h3>The Compliance Risk Report</h3><p>Every violation catalogued with severity, platform rule cited, and specific ad/page referenced.</p><ul class="report-sections"><li>HIPAA exposure itemized by page</li><li>Platform policy flags with citations</li><li>42 CFR Part 2 signals</li><li>LegitScript gaps</li><li>Pixel / tracking risks on PHI pages</li><li>Remediation priority checklist</li></ul></div>
+    <div class="report-card"><span class="report-audience" style="color:var(--slate);">TCA / BWG Internal Team</span><h3>The Agency Intake Report</h3><p>Full technical detail. Account structure map. Access status. Upsell opportunities flagged.</p><ul class="report-sections"><li>Account structure diagram</li><li>Access status per platform</li><li>Data quality assessment</li><li>Historical spend reconstruction</li><li>Identified service gaps → upsells</li><li>Onboarding checklist</li></ul></div>
+    <div class="report-card"><span class="report-audience" style="color:var(--purple);">Admissions Director</span><h3>The Admissions Performance Report</h3><p>Which ads and channels generate qualified calls and admissions vs. just clicks.</p><ul class="report-sections"><li>Channel → call → admission path</li><li>Call quality scoring by source</li><li>Intake conversion rate by campaign</li><li>Peak inquiry windows</li><li>Insurance type distribution</li><li>Coaching opportunity flags</li></ul></div>
+  </div>
+</div>
+<div class="section">
+  <div class="section-header"><span class="section-num">08</span><h2 class="section-title">Service Expansion Funnel</h2></div>
+  <p class="section-sub">The audit is the top of a service ladder. Each phase completion creates a natural handoff into the next service level.</p>
+  <div class="funnel">
+    <div class="funnel-tier"><div><div class="funnel-label">Free Audit Entry (URL → Phase 1–2)</div><div class="funnel-desc">Public ad library surface + basic compliance flags. No access required.</div></div><span class="funnel-price">Free / Lead Gen</span></div>
+    <div class="funnel-tier"><div><div class="funnel-label">Compliance Snapshot Report (Phase 3)</div><div class="funnel-desc">Paid deliverable: full compliance risk report with prioritized remediation guide.</div></div><span class="funnel-price">$497 – $997</span></div>
+    <div class="funnel-tier"><div><div class="funnel-label">Comprehensive Ads Audit (Phase 4–6)</div><div class="funnel-desc">Full access + export audit across all platforms. Landing page spider. Five-audience report package.</div></div><span class="funnel-price">$2,500 – $5,000</span></div>
+    <div class="funnel-tier"><div><div class="funnel-label">Full Journey Audit + Admissions Coaching (Phase 7)</div><div class="funnel-desc">Call recording review, intake coaching, attribution modeling, 90-day strategic roadmap.</div></div><span class="funnel-price">$7,500 – $15,000</span></div>
+    <div class="funnel-tier"><div><div class="funnel-label">Ongoing Managed Services + Monthly Intelligence</div><div class="funnel-desc">Retained PPC management, monthly compliance re-checks, competitive surveillance.</div></div><span class="funnel-price">$3,000 – $10,000 / mo</span></div>
+  </div>
+</div>
+<div class="section">
+  <div class="section-header"><span class="section-num">09</span><h2 class="section-title">Additional Ideas & Differentiators</h2></div>
+  <p class="section-sub">Features that would make this platform genuinely different from anything else in the treatment marketing space.</p>
+  <div class="ideas-grid">
+    <div class="idea-card"><div class="idea-category">Competitive Intel</div><h4>Competitor Ad Surveillance</h4><p>Monitor named competitors' ad libraries on a schedule. Alert when they launch new campaigns or change messaging.</p></div>
+    <div class="idea-card"><div class="idea-category">Compliance Automation</div><h4>Continuous Compliance Monitor</h4><p>Weekly automated re-check of all live ads. Alert immediately when a new ad goes live with a compliance flag.</p></div>
+    <div class="idea-card"><div class="idea-category">Industry Benchmarking</div><h4>Treatment Center Ad Benchmark Index</h4><p>Aggregate anonymized data across TCA clients to surface industry-wide CPL benchmarks and platform mix norms.</p></div>
+    <div class="idea-card"><div class="idea-category">Creative Intelligence</div><h4>AI Creative Scoring</h4><p>Score each ad's copy and creative against conversion-correlated factors: urgency, insurance mention, CTA strength.</p></div>
+    <div class="idea-card"><div class="idea-category">Call Intelligence</div><h4>Call Transcript Audit</h4><p>Integrate with CallRail / CTM transcripts. Flag calls where intake staff miss objection handling or HIPAA disclosures.</p></div>
+    <div class="idea-card"><div class="idea-category">Attribution</div><h4>Admission Attribution Modeling</h4><p>Map first-touch ad → call → intake → admission → payer type. Identify high-LTV admission sources.</p></div>
+    <div class="idea-card"><div class="idea-category">Lead Magnet</div><h4>White-Label Board Report</h4><p>A version of the business owner report formatted for board presentation to justify ad spend internally.</p></div>
+    <div class="idea-card"><div class="idea-category">Automation</div><h4>Impersonation & Brand Theft Alert</h4><p>Monitor Meta and Google ad libraries for ads using the client's name or brand assets run by another advertiser.</p></div>
+    <div class="idea-card"><div class="idea-category">Tooling</div><h4>Chrome Extension — One-Click Audit</h4><p>Browse to any treatment center site, click the extension, surface an instant public-data audit overlay.</p></div>
+    <div class="idea-card"><div class="idea-category">Lead Scoring</div><h4>Prospect Qualification Score</h4><p>High compliance risk + significant spend + no LegitScript = high-value prospect. Route to sales immediately.</p></div>
+    <div class="idea-card"><div class="idea-category">Network Intelligence</div><h4>Agency Relationship Mapping</h4><p>Track which agencies are running treatment center ads badly. Build competitive intel on incumbents.</p></div>
+    <div class="idea-card"><div class="idea-category">Content</div><h4>Post-Audit Content Recommendations</h4><p>Auto-generate a prioritized content brief based on audit gaps. Packaged as an upsell to content services.</p></div>
+  </div>
+</div>
+<div class="section">
+  <div class="section-header"><span class="section-num">10</span><h2 class="section-title">Technical Architecture Notes</h2></div>
+  <div class="two-col">
+    <div><h3 style="font-size:14px;font-weight:600;margin-bottom:12px;">Data Acquisition Layer</h3><ul class="phase-items" style="gap:8px;"><li>Meta Ad Library API (official, rate-limited) + scraper fallback</li><li>Google Ads Transparency API</li><li>Playwright / Puppeteer for screenshot capture</li><li>Screaming Frog-style spider for landing pages</li><li>PageSpeed Insights API for CWV scores</li><li>WHOIS / RDAP APIs for domain intel</li><li>Google Places API for GBP matching</li><li>LegitScript database query</li><li>Wappalyzer / BuiltWith API for tech stack</li></ul></div>
+    <div><h3 style="font-size:14px;font-weight:600;margin-bottom:12px;">Analysis & Automation Layer</h3><ul class="phase-items" style="gap:8px;"><li>Claude / GPT-4V for image compliance analysis</li><li>Claude for ad copy claims extraction and scoring</li><li>Session persistence for multi-visit async flow</li><li>Email automation (Postmark / SendGrid) for drip sequences</li><li>Webhook-triggered re-scan on access grant</li><li>PDF report generator (puppeteer-based) per audience</li><li>Secure file upload portal for export intake</li><li>CSV / export parser per platform</li><li>CRM integration hooks (Salesforce, HubSpot)</li></ul></div>
+  </div>
+</div>
+<div class="footer">
+  <span>Treatment Center Agency · Ads Intelligence System · Product Blueprint v1.0</span>
+  <span>Better Web Group · Confidential</span>
+</div>
+</body>
+</html>
