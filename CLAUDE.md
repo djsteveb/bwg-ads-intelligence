@@ -105,9 +105,9 @@ git push -u origin claude/implement-email-layer-U9k6B
 
 ## Build Status
 
-**Last completed milestone:** M9 — Executive report (report class, HTML template, email-report wire-up)
+**Last completed milestone:** M10 — Admin panel (session list, detail, settings, storage dashboard)
 
-**Next milestone to build:** M10 — Admin panel
+**Next milestone to build:** Security review
 
 **Milestones:**
 - [x] Planning — docs written, todos set
@@ -121,7 +121,7 @@ git push -u origin claude/implement-email-layer-U9k6B
 - [x] M7 — Phase 4 Screenshot gallery UI
 - [x] M8 — Phase 5 Access request funnel
 - [x] M9 — Executive report
-- [ ] M10 — Admin panel
+- [x] M10 — Admin panel
 - [ ] Security review
 
 *(Update this list after each milestone is committed.)*
