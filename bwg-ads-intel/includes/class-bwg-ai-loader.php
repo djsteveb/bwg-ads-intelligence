@@ -53,10 +53,13 @@ class BWG_AI_Loader {
 		$this->add_action( 'bwg_ai_run_discovery', [ $discovery, 'run' ] );
 
 		$ad_surface = new BWG_AI_Ad_Surface();
-		$this->add_action( 'bwg_ai_poll_entityiq', [ $ad_surface, 'poll' ] );
+		$this->add_action( 'bwg_ai_queue_ad_surface',  [ $ad_surface, 'queue_job' ],      10, 2 );
+		$this->add_action( 'bwg_ai_poll_entityiq',     [ $ad_surface, 'poll' ] );
+		$this->add_action( 'bwg_ai_webhook_received',  [ $ad_surface, 'handle_webhook' ], 10, 4 );
 
 		$email = new BWG_AI_Email();
-		$this->add_action( 'bwg_ai_send_access_followup', [ $email, 'send_followups' ] );
+		$this->add_action( 'bwg_ai_session_created',       [ $email, 'send_save_spot' ] );
+		$this->add_action( 'bwg_ai_send_access_followup',  [ $email, 'send_followups' ] );
 
 		// Daily maintenance registered inside Admin to keep it co-located with its handler.
 		// The cron is scheduled in Activator and handled by BWG_AI_Admin::daily_maintenance().

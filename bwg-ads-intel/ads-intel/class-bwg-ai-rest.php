@@ -68,6 +68,12 @@ class BWG_AI_Rest {
 			'permission_callback' => [ $this, 'require_nonce' ],
 		] );
 
+		register_rest_route( $ns, $b . '/request-access', [
+			'methods'             => 'POST',
+			'callback'            => [ $this, 'request_access' ],
+			'permission_callback' => [ $this, 'require_nonce' ],
+		] );
+
 		register_rest_route( $ns, $b . '/upload-export', [
 			'methods'             => 'POST',
 			'callback'            => [ $this, 'upload_export' ],
@@ -168,6 +174,9 @@ class BWG_AI_Rest {
 		if ( is_wp_error( $session ) ) {
 			return $session;
 		}
+
+		// Fire save-spot email so the user has their access code and resume link.
+		do_action( 'bwg_ai_session_created', $session );
 
 		// Schedule Phase 1 discovery cron to run in 5 seconds.
 		wp_schedule_single_event( time() + 5, 'bwg_ai_run_discovery', [ $session->id ] );
@@ -411,6 +420,57 @@ class BWG_AI_Rest {
 	}
 
 	/**
+	 * POST /request-access
+	 * Records that the user has requested platform access and fires the step-by-step email.
+	 */
+	public function request_access( WP_REST_Request $request ) {
+		$session_id = absint( $request->get_param( 'session_id' ) );
+		$session    = $this->get_session_or_error( $session_id );
+		if ( is_wp_error( $session ) ) {
+			return $session;
+		}
+
+		$platform = sanitize_text_field( $request->get_param( 'platform' ) );
+		$allowed  = [ 'meta', 'google', 'linkedin', 'tiktok' ];
+		if ( ! in_array( $platform, $allowed, true ) ) {
+			return $this->error( 'invalid_platform', 'Invalid platform.', 400 );
+		}
+
+		global $wpdb;
+		$existing = $wpdb->get_row(
+			$wpdb->prepare(
+				"SELECT access_status FROM `{$wpdb->prefix}bwg_ai_access`
+				 WHERE session_id = %d AND platform = %s LIMIT 1",
+				$session->id,
+				$platform
+			)
+		);
+
+		// Don't downgrade a previously granted or export status.
+		if ( $existing && in_array( $existing->access_status, [ 'granted', 'export' ], true ) ) {
+			return new WP_REST_Response( [ 'ok' => true, 'platform' => $platform, 'status' => $existing->access_status, 'already_requested' => true ], 200 );
+		}
+
+		$wpdb->replace(
+			$wpdb->prefix . 'bwg_ai_access',
+			[
+				'session_id'    => $session->id,
+				'platform'      => $platform,
+				'access_status' => 'pending',
+			],
+			[ '%d', '%s', '%s' ]
+		);
+
+		BWG_AI_Session::log( $session->id, 'access_requested', "{$platform} access requested." );
+
+		if ( class_exists( 'BWG_AI_Email' ) ) {
+			( new BWG_AI_Email() )->send_access_request( $session, $platform );
+		}
+
+		return new WP_REST_Response( [ 'ok' => true, 'platform' => $platform, 'status' => 'pending' ], 200 );
+	}
+
+	/**
 	 * POST /upload-export
 	 */
 	public function upload_export( WP_REST_Request $request ) {
@@ -445,20 +505,29 @@ class BWG_AI_Rest {
 			return $this->error( 'file_too_large', 'File must be under 10MB.', 400 );
 		}
 
-		// Parsing delegated to M8; for now just acknowledge receipt.
-		BWG_AI_Session::log( $session->id, 'export_uploaded', "Platform: {$platform}, size: {$file['size']} bytes." );
+		// Parse CSV and merge into ads table.
+		$rows_parsed = 0;
+		if ( 'meta' === $platform ) {
+			$rows_parsed = $this->parse_meta_csv( $file['tmp_name'], $session->id );
+		} elseif ( 'google' === $platform ) {
+			$rows_parsed = $this->parse_google_csv( $file['tmp_name'], $session->id );
+		}
 
-		// Update access record.
+		BWG_AI_Session::log( $session->id, 'export_uploaded', "Platform: {$platform}, size: {$file['size']} bytes, rows: {$rows_parsed}." );
+
 		global $wpdb;
-		$wpdb->update(
+		$wpdb->replace(
 			$wpdb->prefix . 'bwg_ai_access',
-			[ 'export_uploaded_at' => gmdate( 'Y-m-d H:i:s' ) ],
-			[ 'session_id' => $session->id, 'platform' => $platform ],
-			[ '%s' ],
-			[ '%d', '%s' ]
+			[
+				'session_id'         => $session->id,
+				'platform'           => $platform,
+				'access_status'      => 'export',
+				'export_uploaded_at' => gmdate( 'Y-m-d H:i:s' ),
+			],
+			[ '%d', '%s', '%s', '%s' ]
 		);
 
-		return new WP_REST_Response( [ 'ok' => true, 'platform' => $platform, 'rows_parsed' => 0 ], 200 );
+		return new WP_REST_Response( [ 'ok' => true, 'platform' => $platform, 'rows_parsed' => $rows_parsed ], 200 );
 	}
 
 	/**
@@ -589,6 +658,187 @@ class BWG_AI_Rest {
 		BWG_AI_Session::log( $session_id, 'webhook_received', "EntityIQ job {$job_id} — " . count( $ads ) . ' ads.' );
 
 		return new WP_REST_Response( [ 'ok' => true ], 200 );
+	}
+
+	// -------------------------------------------------------------------------
+	// CSV parsers
+	// -------------------------------------------------------------------------
+
+	/**
+	 * Parse a Meta Ads Manager CSV export and upsert rows into wp_bwg_ai_ads.
+	 * Expected columns (subset): Ad ID, Ad name, Ad status, Results, Reach, Impressions,
+	 * Cost per result, Amount spent (USD), Starts, Ends
+	 *
+	 * @return int Rows successfully parsed.
+	 */
+	private function parse_meta_csv( $filepath, $session_id ) {
+		$handle = fopen( $filepath, 'r' ); // phpcs:ignore WordPress.WP.AlternativeFunctions
+		if ( ! $handle ) {
+			return 0;
+		}
+
+		$header = null;
+		$count  = 0;
+		global $wpdb;
+		$table = $wpdb->prefix . 'bwg_ai_ads';
+
+		while ( ( $row = fgetcsv( $handle ) ) !== false ) {
+			if ( $header === null ) {
+				// Normalise header names: lower-case, trim.
+				$header = array_map( fn( $h ) => strtolower( trim( $h ) ), $row );
+				continue;
+			}
+
+			if ( count( $row ) !== count( $header ) ) {
+				continue;
+			}
+
+			$data = array_combine( $header, $row );
+
+			$ad_id     = sanitize_text_field( $data['ad id'] ?? '' );
+			$ad_name   = sanitize_text_field( $data['ad name'] ?? '' );
+			$status    = sanitize_text_field( $data['ad status'] ?? '' );
+			$starts    = sanitize_text_field( $data['starts'] ?? '' );
+			$ends      = sanitize_text_field( $data['ends'] ?? '' );
+			$spent     = sanitize_text_field( $data['amount spent (usd)'] ?? ( $data['amount spent'] ?? '' ) );
+
+			if ( empty( $ad_id ) ) {
+				continue;
+			}
+
+			$run_dates  = $starts && $ends ? "{$starts} – {$ends}" : ( $starts ?: '' );
+			$spend_range = $spent ? "\${$spent}" : '';
+
+			// Check for existing row to preserve compliance_flags.
+			$existing = $wpdb->get_var(
+				$wpdb->prepare(
+					"SELECT id FROM `{$table}` WHERE session_id = %d AND platform = 'meta' AND ad_id = %s LIMIT 1",
+					$session_id,
+					$ad_id
+				)
+			);
+
+			if ( $existing ) {
+				$wpdb->update(
+					$table,
+					[
+						'run_dates'   => $run_dates,
+						'spend_range' => $spend_range,
+					],
+					[ 'id' => $existing ],
+					[ '%s', '%s' ],
+					[ '%d' ]
+				);
+			} else {
+				$wpdb->insert(
+					$table,
+					[
+						'session_id'  => $session_id,
+						'platform'    => 'meta',
+						'ad_id'       => $ad_id,
+						'ad_copy'     => $ad_name,
+						'run_dates'   => $run_dates,
+						'spend_range' => $spend_range,
+					],
+					[ '%d', '%s', '%s', '%s', '%s', '%s' ]
+				);
+			}
+
+			$count++;
+		}
+
+		fclose( $handle ); // phpcs:ignore WordPress.WP.AlternativeFunctions
+		return $count;
+	}
+
+	/**
+	 * Parse a Google Ads CSV export and upsert rows into wp_bwg_ai_ads.
+	 * Standard Google Ads report: Campaign, Ad group, Ad, Status, Clicks, Impr., CTR, Avg. CPC, Cost, ...
+	 *
+	 * @return int Rows successfully parsed.
+	 */
+	private function parse_google_csv( $filepath, $session_id ) {
+		$handle = fopen( $filepath, 'r' ); // phpcs:ignore WordPress.WP.AlternativeFunctions
+		if ( ! $handle ) {
+			return 0;
+		}
+
+		$header = null;
+		$count  = 0;
+		global $wpdb;
+		$table = $wpdb->prefix . 'bwg_ai_ads';
+
+		while ( ( $row = fgetcsv( $handle ) ) !== false ) {
+			// Google Ads CSVs often have header/footer rows like "Google Ads" or "Total:".
+			if ( count( $row ) < 3 ) {
+				continue;
+			}
+
+			if ( $header === null ) {
+				$candidate = array_map( fn( $h ) => strtolower( trim( $h ) ), $row );
+				// Detect the actual header row by checking for known columns.
+				if ( in_array( 'campaign', $candidate, true ) || in_array( 'ad', $candidate, true ) ) {
+					$header = $candidate;
+				}
+				continue;
+			}
+
+			if ( count( $row ) !== count( $header ) ) {
+				continue;
+			}
+
+			$data = array_combine( $header, $row );
+
+			// Skip summary rows.
+			$campaign = sanitize_text_field( $data['campaign'] ?? '' );
+			if ( empty( $campaign ) || strtolower( $campaign ) === 'total' ) {
+				continue;
+			}
+
+			$ad_group = sanitize_text_field( $data['ad group'] ?? ( $data['ad group name'] ?? '' ) );
+			$ad_text  = sanitize_text_field( $data['ad'] ?? ( $data['ad name'] ?? ( $data['description'] ?? '' ) ) );
+			$cost     = sanitize_text_field( $data['cost'] ?? ( $data['cost (usd)'] ?? '' ) );
+
+			// Synthetic stable ID.
+			$ad_id = md5( $session_id . '|' . $campaign . '|' . $ad_group . '|' . $ad_text );
+
+			$existing = $wpdb->get_var(
+				$wpdb->prepare(
+					"SELECT id FROM `{$table}` WHERE session_id = %d AND platform = 'google' AND ad_id = %s LIMIT 1",
+					$session_id,
+					$ad_id
+				)
+			);
+
+			$spend_range = $cost ? "\${$cost}" : '';
+
+			if ( $existing ) {
+				$wpdb->update(
+					$table,
+					[ 'spend_range' => $spend_range ],
+					[ 'id' => $existing ],
+					[ '%s' ],
+					[ '%d' ]
+				);
+			} else {
+				$wpdb->insert(
+					$table,
+					[
+						'session_id'  => $session_id,
+						'platform'    => 'google',
+						'ad_id'       => $ad_id,
+						'ad_copy'     => $ad_text ?: "{$campaign} / {$ad_group}",
+						'spend_range' => $spend_range,
+					],
+					[ '%d', '%s', '%s', '%s', '%s' ]
+				);
+			}
+
+			$count++;
+		}
+
+		fclose( $handle ); // phpcs:ignore WordPress.WP.AlternativeFunctions
+		return $count;
 	}
 
 	// -------------------------------------------------------------------------

@@ -91,23 +91,23 @@ The WP plugin fires async REST calls to EntityIQ for heavy jobs (scraping, scree
 
 ## Git Branch
 
-All work goes on: `claude/read-files-plan-build-yho2p`
+All work goes on: `claude/implement-email-layer-U9k6B`
 
 ```bash
-git checkout claude/read-files-plan-build-yho2p
+git checkout claude/implement-email-layer-U9k6B
 # ... make changes ...
 git add <specific files>
 git commit -m "[M{N}] milestone name — summary"
-git push -u origin claude/read-files-plan-build-yho2p
+git push -u origin claude/implement-email-layer-U9k6B
 ```
 
 ---
 
 ## Build Status
 
-**Last completed milestone:** M3 — Front-end form shortcode (step machine, polling, review, resume)
+**Last completed milestone:** M8 — Phase 5 Access request funnel (platform cards, request-access endpoint, CSV upload parsers, Step 5 UI + CSS)
 
-**Next milestone to build:** M4 — Email layer
+**Next milestone to build:** M9 — Executive report
 
 **Milestones:**
 - [x] Planning — docs written, todos set
@@ -115,11 +115,11 @@ git push -u origin claude/read-files-plan-build-yho2p
 - [x] M1 — Session layer + REST skeleton
 - [x] M2 — Phase 1 Discovery Engine
 - [x] M3 — Front-end form shortcode
-- [ ] M4 — Email layer
-- [ ] M5 — Phase 2 EntityIQ integration
-- [ ] M6 — Phase 3 Text compliance engine
-- [ ] M7 — Phase 4 Screenshot gallery UI
-- [ ] M8 — Phase 5 Access request funnel
+- [x] M4 — Email layer
+- [x] M5 — Phase 2 EntityIQ integration
+- [x] M6 — Phase 3 Text compliance engine
+- [x] M7 — Phase 4 Screenshot gallery UI
+- [x] M8 — Phase 5 Access request funnel
 - [ ] M9 — Executive report
 - [ ] M10 — Admin panel
 - [ ] Security review
@@ -172,6 +172,7 @@ Auth: `X-WP-Nonce` on all except `/resume` (access code auth) and `/report/{toke
 | `/confirm-ads` | POST | 4 |
 | `/add-accounts` | POST | 4 |
 | `/access-status` | POST | 5 |
+| `/request-access` | POST | 5 |
 | `/upload-export` | POST | 5 |
 | `/spider-status/{id}` | GET | 6 (deferred) |
 | `/report/{token}` | GET | public |
@@ -234,12 +235,22 @@ Auth: `X-WP-Nonce` on all except `/resume` (access code auth) and `/report/{toke
 
 ---
 
-> Read the file `/home/user/bwg-ads-intelligence/CLAUDE.md` first — it is the context document for this project. Then read `docs/BUILD-PLAN.md` for the ordered task list. Then check `git log --oneline -10` on branch `claude/read-files-plan-build-yho2p` to see what's been completed.
+> Read `/home/user/bwg-ads-intelligence/CLAUDE.md` first — it is the AI context document for this project. Then read `docs/BUILD-PLAN.md` for the ordered milestone spec. Then run `git log --oneline -10` on branch `claude/implement-email-layer-U9k6B` to confirm build state.
 >
-> The project is: BWG Ads Intelligence System — a WordPress plugin + Node.js EntityIQ extension for auditing treatment center advertisers' ad footprint. Two-codebase architecture; this repo contains the WordPress plugin. Architectural decisions are locked in `docs/ARCHITECTURE.md`.
+> The project is: BWG Ads Intelligence System — a WordPress plugin + Node.js EntityIQ extension for auditing treatment center advertisers' ad footprint. Two-codebase architecture; this repo is the WordPress plugin only. All architectural decisions are locked in `docs/ARCHITECTURE.md`.
 >
-> Pick up at the next incomplete milestone in `docs/BUILD-PLAN.md` and build it. Commit with message `[M{N}] milestone name — summary` and push to `claude/read-files-plan-build-yho2p` when done. Update the milestone checklist in `CLAUDE.md`.
+> **Next milestone to build: M9 — Executive Report.**
+>
+> M9 spec is in `docs/BUILD-PLAN.md` (Milestone 9). Two files to build/fill in:
+> - `bwg-ads-intel/ads-intel/class-bwg-ai-report.php` — `generate(session_id)` method: assemble report JSON from discovered/ads/access tables, compute risk score (0–100 weighted by flag severity), estimate wasted spend, derive top 3 actions, store in `wp_bwg_ai_reports` with a UUID token, return token.
+> - `bwg-ads-intel/admin/partials/report-template.php` — HTML report page: risk score gauge, wasted spend estimate, top 3 urgent actions, platform snapshot table, what's working section, book-a-call CTA. Uses same design system (DM Serif Display, Inter, IBM Plex Mono, same CSS vars as ai-form.css).
+>
+> Wire `GET /report/{token}` in `class-bwg-ai-rest.php` to render the template (already registered, currently returns JSON — change it to render the template for browser requests or return JSON for API requests).  
+> Wire `POST /email-report` to call `BWG_AI_Report::generate()` then `BWG_AI_Email::send_report_ready()`.  
+> Update `renderReportStub()` in `ai-form.js` to call `POST /email-report` and show the report token URL.
+>
+> Commit `[M9] Executive report — report class, HTML template, email-report wire-up` and push to `claude/implement-email-layer-U9k6B`. Update the milestone checklist in `CLAUDE.md`.
 
 ---
 
-*(Keep this prompt updated as milestones complete — replace "next incomplete milestone" with a specific one if the build state is complex.)*
+*(Keep this prompt updated as milestones complete.)*
