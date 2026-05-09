@@ -39,12 +39,14 @@ class BWG_AI_Loader {
 		$shortcode = new BWG_AI_Shortcode();
 		$this->add_action( 'init', [ $shortcode, 'register' ] );
 
-		// Admin panel.
+		// Admin panel + daily maintenance cron (registered outside is_admin() so cron fires correctly).
+		$admin = new BWG_AI_Admin();
+		$this->add_action( 'bwg_ai_daily_maintenance', [ $admin, 'daily_maintenance' ] );
 		if ( is_admin() ) {
-			$admin = new BWG_AI_Admin();
-			$this->add_action( 'admin_menu', [ $admin, 'register_menu' ] );
-			$this->add_action( 'admin_init', [ $admin, 'register_settings' ] );
-			$this->add_action( 'admin_enqueue_scripts', [ $admin, 'enqueue_assets' ] );
+			$this->add_action( 'admin_menu',             [ $admin, 'register_menu' ] );
+			$this->add_action( 'admin_init',             [ $admin, 'register_settings' ] );
+			$this->add_action( 'admin_enqueue_scripts',  [ $admin, 'enqueue_assets' ] );
+			$this->add_action( 'wp_ajax_bwg_ai_test_email', [ $admin, 'handle_test_email_ajax' ] );
 			$this->add_filter( 'plugin_action_links_' . BWG_AI_BASENAME, [ $admin, 'plugin_action_links' ] );
 		}
 
