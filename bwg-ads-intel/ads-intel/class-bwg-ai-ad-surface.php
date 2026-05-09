@@ -82,6 +82,10 @@ class BWG_AI_Ad_Surface {
 	 * @param int $session_id
 	 */
 	public function poll( $session_id ) {
+		if ( ! wp_doing_cron() ) {
+			return;
+		}
+
 		$session_id = absint( $session_id );
 		$session    = BWG_AI_Session::get( $session_id );
 

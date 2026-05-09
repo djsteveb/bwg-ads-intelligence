@@ -105,9 +105,9 @@ git push -u origin claude/implement-email-layer-U9k6B
 
 ## Build Status
 
-**Last completed milestone:** M10 — Admin panel (session list, detail, settings, storage dashboard)
+**Last completed milestone:** Security review — IDOR protection, captcha on resume, access-code lockout, cron guards, abuse notifications
 
-**Next milestone to build:** Security review
+**Next milestone to build:** QA / staging deployment
 
 **Milestones:**
 - [x] Planning — docs written, todos set
@@ -122,7 +122,7 @@ git push -u origin claude/implement-email-layer-U9k6B
 - [x] M8 — Phase 5 Access request funnel
 - [x] M9 — Executive report
 - [x] M10 — Admin panel
-- [ ] Security review
+- [x] Security review
 
 *(Update this list after each milestone is committed.)*
 

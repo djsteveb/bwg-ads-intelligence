@@ -100,6 +100,75 @@ class BWG_AI_Rate_Limiter {
 	}
 
 	/**
+	 * Check if an IP is locked out (too many failures) WITHOUT incrementing.
+	 * Used to gate access-code attempts before processing.
+	 *
+	 * @param string $key    Bucket key (e.g. "access_code_fail:1.2.3.4")
+	 * @param int    $limit  Max failures before lockout.
+	 * @param int    $window Window in seconds.
+	 * @return bool True = locked out (blocked), false = allowed.
+	 */
+	public static function is_locked( $key, $limit, $window ) {
+		global $wpdb;
+		$table = self::table();
+		$key   = sanitize_text_field( $key );
+		$now   = time();
+
+		$row = $wpdb->get_row(
+			$wpdb->prepare(
+				"SELECT count, expires_at FROM `$table` WHERE bucket_key = %s",
+				$key
+			)
+		);
+
+		if ( ! $row || strtotime( $row->expires_at ) <= $now ) {
+			return false;
+		}
+
+		return (int) $row->count >= $limit;
+	}
+
+	/**
+	 * Increment a failure counter without checking the limit.
+	 * Used after a confirmed bad access-code guess.
+	 *
+	 * @param string $key    Bucket key.
+	 * @param int    $window Window in seconds (used when creating a new bucket).
+	 */
+	public static function increment( $key, $window ) {
+		global $wpdb;
+		$table = self::table();
+		$key   = sanitize_text_field( $key );
+		$now   = time();
+
+		$row = $wpdb->get_row(
+			$wpdb->prepare(
+				"SELECT count, expires_at FROM `$table` WHERE bucket_key = %s",
+				$key
+			)
+		);
+
+		if ( ! $row || strtotime( $row->expires_at ) <= $now ) {
+			$wpdb->replace(
+				$table,
+				[
+					'bucket_key' => $key,
+					'count'      => 1,
+					'expires_at' => gmdate( 'Y-m-d H:i:s', $now + $window ),
+				],
+				[ '%s', '%d', '%s' ]
+			);
+		} else {
+			$wpdb->query(
+				$wpdb->prepare(
+					"UPDATE `$table` SET count = count + 1 WHERE bucket_key = %s",
+					$key
+				)
+			);
+		}
+	}
+
+	/**
 	 * Remove stale rows (called by daily maintenance cron).
 	 */
 	public static function prune() {

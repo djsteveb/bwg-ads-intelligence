@@ -149,6 +149,10 @@ class BWG_AI_Email {
 	// -------------------------------------------------------------------------
 
 	public function send_followups() {
+		if ( ! wp_doing_cron() ) {
+			return;
+		}
+
 		$drip = [
 			1 => 'send_followup_day1',
 			3 => 'send_followup_day3',
@@ -166,6 +170,58 @@ class BWG_AI_Email {
 				BWG_AI_Session::log( $session->id, $action_key, "Day {$days} follow-up email sent." );
 			}
 		}
+
+		$this->notify_on_abuse();
+	}
+
+	/**
+	 * Send an admin alert if abnormal activity thresholds are breached.
+	 * Called once per hour by the send_followups cron.
+	 *
+	 * Thresholds: >100 new sessions in the last hour, >50 failed resume
+	 * attempts in the last hour (potential brute-force scraping).
+	 */
+	public function notify_on_abuse() {
+		global $wpdb;
+		$p    = $wpdb->prefix . 'bwg_ai_';
+		$hour = gmdate( 'Y-m-d H:i:s', time() - 3600 );
+
+		$sessions_hr = (int) $wpdb->get_var(
+			$wpdb->prepare(
+				"SELECT COUNT(*) FROM `{$p}sessions` WHERE created_at >= %s",
+				$hour
+			)
+		);
+
+		$failed_resumes_hr = (int) $wpdb->get_var(
+			$wpdb->prepare(
+				"SELECT COUNT(*) FROM `{$p}audit_log` WHERE action = 'resume_failed' AND created_at >= %s",
+				$hour
+			)
+		);
+
+		$alerts = [];
+		if ( $sessions_hr > 100 ) {
+			$alerts[] = "{$sessions_hr} new sessions created in the last hour (threshold: 100).";
+		}
+		if ( $failed_resumes_hr > 50 ) {
+			$alerts[] = "{$failed_resumes_hr} failed resume attempts in the last hour (threshold: 50).";
+		}
+
+		if ( empty( $alerts ) ) {
+			return;
+		}
+
+		$admin_email = get_option( 'admin_email' );
+		$site_name   = get_bloginfo( 'name' );
+		$subject     = "[{$site_name}] BWG Ads Intelligence — Abuse Alert";
+		$body        = "Unusual activity detected on the Ads Intelligence plugin:\n\n"
+		               . implode( "\n", $alerts )
+		               . "\n\nPlease review your site's admin panel.\n\n"
+		               . admin_url( 'admin.php?page=bwg-ads-intel' );
+
+		wp_mail( $admin_email, $subject, $body );
+		BWG_AI_Session::log( null, 'abuse_alert', implode( ' | ', $alerts ) );
 	}
 
 	// -------------------------------------------------------------------------

@@ -290,6 +290,10 @@ class BWG_AI_Admin {
 	// -------------------------------------------------------------------------
 
 	public function daily_maintenance() {
+		if ( ! wp_doing_cron() ) {
+			return;
+		}
+
 		global $wpdb;
 		$p = $wpdb->prefix . 'bwg_ai_';
 
