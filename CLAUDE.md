@@ -235,21 +235,24 @@ Auth: `X-WP-Nonce` on all except `/resume` (access code auth) and `/report/{toke
 
 ---
 
-> Read `/home/user/bwg-ads-intelligence/CLAUDE.md` first — it is the AI context document for this project. Then read `docs/BUILD-PLAN.md` for the ordered milestone spec. Then run `git log --oneline -10` on branch `claude/implement-email-layer-U9k6B` to confirm build state.
+> Read `/home/user/bwg-ads-intelligence/CLAUDE.md` first — it is the AI context document for this project. Then read `docs/BUILD-PLAN.md` for the ordered milestone spec. Then run `git log --oneline -10` to confirm build state.
 >
 > The project is: BWG Ads Intelligence System — a WordPress plugin + Node.js EntityIQ extension for auditing treatment center advertisers' ad footprint. Two-codebase architecture; this repo is the WordPress plugin only. All architectural decisions are locked in `docs/ARCHITECTURE.md`.
 >
-> **Next milestone to build: M9 — Executive Report.**
+> **Current status: All milestones M0–M10 + Security Review are complete. The plugin is feature-complete for MVP.**
 >
-> M9 spec is in `docs/BUILD-PLAN.md` (Milestone 9). Two files to build/fill in:
-> - `bwg-ads-intel/ads-intel/class-bwg-ai-report.php` — `generate(session_id)` method: assemble report JSON from discovered/ads/access tables, compute risk score (0–100 weighted by flag severity), estimate wasted spend, derive top 3 actions, store in `wp_bwg_ai_reports` with a UUID token, return token.
-> - `bwg-ads-intel/admin/partials/report-template.php` — HTML report page: risk score gauge, wasted spend estimate, top 3 urgent actions, platform snapshot table, what's working section, book-a-call CTA. Uses same design system (DM Serif Display, Inter, IBM Plex Mono, same CSS vars as ai-form.css).
+> **Next task: QA / staging deployment preparation.**
 >
-> Wire `GET /report/{token}` in `class-bwg-ai-rest.php` to render the template (already registered, currently returns JSON — change it to render the template for browser requests or return JSON for API requests).  
-> Wire `POST /email-report` to call `BWG_AI_Report::generate()` then `BWG_AI_Email::send_report_ready()`.  
-> Update `renderReportStub()` in `ai-form.js` to call `POST /email-report` and show the report token URL.
+> Suggested checks before staging deploy:
+> - PHP syntax check across all plugin files (`php -l`)
+> - Verify all REST routes register cleanly (no fatal errors on `rest_api_init`)
+> - Test `/start` → discovery → confirm → ads → confirm-ads → access-request → report flow end-to-end
+> - Confirm rate limiting and captcha work in staging environment
+> - Verify EntityIQ webhook receives and processes a test payload
+> - Run `npm audit` on the EntityIQ extension
+> - Check admin panel: session list, detail view, settings save, storage dashboard
 >
-> Commit `[M9] Executive report — report class, HTML template, email-report wire-up` and push to `claude/implement-email-layer-U9k6B`. Update the milestone checklist in `CLAUDE.md`.
+> All architectural decisions are locked. Security review is complete. Do not add new features without a documented spec change.
 
 ---
 

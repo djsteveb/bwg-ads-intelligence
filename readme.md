@@ -207,13 +207,25 @@ If running standalone, these classes are bundled as stubs in `includes/fallbacks
 
 ## Development
 
-**Branch:** `claude/implement-email-layer-U9k6B`
+**Build status:** Feature-complete for MVP. All milestones M0–M10 + Security Review complete.
 
-**Build status:** M0–M8 complete. Next: M9 — Executive Report.
+**Next step:** QA / staging deployment.
+
+**Completed milestones:**
+- M0 — Plugin scaffold (bootstrap, DB tables, uninstall)
+- M1 — Session layer + REST skeleton (14 endpoints)
+- M2 — Phase 1 Discovery Engine (GBP, social, pixels, WHOIS, LegitScript)
+- M3 — Front-end form shortcode (step machine, polling, resume flow)
+- M4 — Email layer (drip cron, 7 email methods, SendGrid/Postmark support)
+- M5 — Phase 2 EntityIQ ad surface integration (queue, poll, webhook)
+- M6 — Phase 3 Text compliance engine (12 rules, 3 severity tiers)
+- M7 — Phase 4 Screenshot gallery UI (ad cards, confirm/flag, add-accounts)
+- M8 — Phase 5 Access request funnel (platform cards, Meta/Google CSV upload)
+- M9 — Executive report (risk score gauge, wasted spend, PDF stub, tokenized URL)
+- M10 — Admin panel (session list, detail, settings, storage dashboard)
+- Security review — IDOR protection, captcha on resume, access-code lockout, cron guards, abuse notifications
 
 **For AI agents continuing this build:**  
-Read `CLAUDE.md` first — it contains the full context, current build status, and a copy-paste prompt (including M9 spec) for new chat sessions.
+Read `CLAUDE.md` first — it contains the full context, current build status, and a copy-paste prompt for new chat sessions.
 
-**Build order:** Follow milestones in `docs/BUILD-PLAN.md`. Each milestone commits independently. After each commit, update the milestone checklist in `CLAUDE.md`.
-
-**Security:** Every milestone must follow the security requirements in `docs/BUILD-PLAN.md` (Security Review section). A full security audit runs after M10 before any production deploy.
+**Security:** Full security audit complete. See `docs/BUILD-PLAN.md` (Security Review section) for the full checklist — all items resolved.
