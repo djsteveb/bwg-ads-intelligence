@@ -1,0 +1,575 @@
+/* BWG Ads Intelligence — Front-End Form Styles
+   Design tokens match ads-intelligence-system.html blueprint. */
+
+/* ============================================================
+   TOKENS
+   ============================================================ */
+.bwg-ai-app {
+	--ink:          #0f1117;
+	--ink2:         #3a3d4a;
+	--ink3:         #6b7080;
+	--surface:      #f5f4f0;
+	--surface2:     #ebe9e3;
+	--border:       #d8d5cc;
+	--gold:         #b8860b;
+	--gold-light:   #f5e9c0;
+	--gold-mid:     #d4a017;
+	--teal:         #0d6e6e;
+	--teal-light:   #d1ede8;
+	--coral:        #c0392b;
+	--coral-light:  #fde8e6;
+	--green:        #2d6a4f;
+	--green-light:  #d8f3dc;
+	--amber:        #d97706;
+	--amber-light:  #fef3c7;
+	--radius:       10px;
+	--shadow:       0 2px 12px rgba(15,17,23,0.08);
+}
+
+/* ============================================================
+   WRAPPER
+   ============================================================ */
+.bwg-ai-app {
+	font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+	font-size: 15px;
+	line-height: 1.6;
+	color: var(--ink);
+	background: var(--surface);
+	max-width: 700px;
+	margin: 0 auto;
+	padding: 8px;
+	box-sizing: border-box;
+}
+
+.bwg-ai-app *,
+.bwg-ai-app *::before,
+.bwg-ai-app *::after {
+	box-sizing: border-box;
+}
+
+.bwg-ai-inner {
+	background: #fff;
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	box-shadow: var(--shadow);
+	overflow: hidden;
+}
+
+/* ============================================================
+   STEP HEADER
+   ============================================================ */
+.bwg-ai-header {
+	background: var(--ink);
+	color: #f0ede6;
+	padding: 32px 36px 28px;
+	position: relative;
+	overflow: hidden;
+}
+
+.bwg-ai-header::after {
+	content: '';
+	position: absolute;
+	top: 0; right: 0; bottom: 0;
+	width: 35%;
+	background: repeating-linear-gradient(
+		-45deg, transparent, transparent 8px,
+		rgba(255,255,255,0.02) 8px, rgba(255,255,255,0.02) 9px
+	);
+	pointer-events: none;
+}
+
+.bwg-ai-header-label {
+	font-family: 'IBM Plex Mono', 'Courier New', monospace;
+	font-size: 10px;
+	letter-spacing: 0.15em;
+	text-transform: uppercase;
+	color: var(--gold-mid);
+	margin-bottom: 10px;
+}
+
+.bwg-ai-header h2 {
+	font-family: 'DM Serif Display', Georgia, serif;
+	font-size: 28px;
+	font-weight: 400;
+	color: #f5f2eb;
+	margin: 0 0 8px;
+	line-height: 1.2;
+}
+
+.bwg-ai-header p {
+	font-size: 13px;
+	color: rgba(240,237,230,0.65);
+	margin: 0;
+	max-width: 480px;
+}
+
+/* Step progress indicator */
+.bwg-ai-step-track {
+	display: flex;
+	gap: 6px;
+	margin-top: 20px;
+}
+
+.bwg-ai-step-dot {
+	height: 3px;
+	flex: 1;
+	border-radius: 2px;
+	background: rgba(255,255,255,0.15);
+	transition: background 0.3s;
+}
+
+.bwg-ai-step-dot.active  { background: var(--gold-mid); }
+.bwg-ai-step-dot.done    { background: rgba(255,255,255,0.4); }
+
+/* ============================================================
+   BODY / CONTENT AREA
+   ============================================================ */
+.bwg-ai-body {
+	padding: 32px 36px;
+}
+
+/* ============================================================
+   FORM ELEMENTS
+   ============================================================ */
+.bwg-ai-field {
+	margin-bottom: 20px;
+}
+
+.bwg-ai-field label {
+	display: block;
+	font-size: 12px;
+	font-weight: 600;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+	color: var(--ink2);
+	margin-bottom: 6px;
+}
+
+.bwg-ai-field input[type="text"],
+.bwg-ai-field input[type="email"],
+.bwg-ai-field input[type="url"] {
+	display: block;
+	width: 100%;
+	padding: 11px 14px;
+	font-size: 14px;
+	font-family: inherit;
+	color: var(--ink);
+	background: #fff;
+	border: 1px solid var(--border);
+	border-radius: 7px;
+	outline: none;
+	transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.bwg-ai-field input:focus {
+	border-color: var(--teal);
+	box-shadow: 0 0 0 3px rgba(13,110,110,0.1);
+}
+
+.bwg-ai-field input.error {
+	border-color: var(--coral);
+	box-shadow: 0 0 0 3px rgba(192,57,43,0.1);
+}
+
+.bwg-ai-field-hint {
+	font-size: 12px;
+	color: var(--ink3);
+	margin-top: 5px;
+}
+
+.bwg-ai-field-error {
+	font-size: 12px;
+	color: var(--coral);
+	margin-top: 5px;
+	display: none;
+}
+
+/* ============================================================
+   BUTTONS
+   ============================================================ */
+.bwg-ai-btn {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	padding: 12px 24px;
+	font-size: 14px;
+	font-weight: 600;
+	font-family: inherit;
+	border-radius: 7px;
+	border: none;
+	cursor: pointer;
+	transition: opacity 0.15s, transform 0.1s;
+	text-decoration: none;
+}
+
+.bwg-ai-btn:active { transform: scale(0.98); }
+
+.bwg-ai-btn-primary {
+	background: var(--ink);
+	color: #f5f2eb;
+}
+
+.bwg-ai-btn-primary:hover { opacity: 0.88; }
+
+.bwg-ai-btn-gold {
+	background: var(--gold-mid);
+	color: #fff;
+}
+
+.bwg-ai-btn-gold:hover { opacity: 0.9; }
+
+.bwg-ai-btn-outline {
+	background: transparent;
+	color: var(--ink2);
+	border: 1px solid var(--border);
+}
+
+.bwg-ai-btn-outline:hover { background: var(--surface); }
+
+.bwg-ai-btn:disabled,
+.bwg-ai-btn.loading {
+	opacity: 0.55;
+	cursor: not-allowed;
+	transform: none;
+}
+
+.bwg-ai-btn-row {
+	display: flex;
+	gap: 12px;
+	align-items: center;
+	margin-top: 24px;
+	flex-wrap: wrap;
+}
+
+/* ============================================================
+   NOTICE / ERROR BAR
+   ============================================================ */
+.bwg-ai-notice {
+	margin: 0 36px 24px;
+	padding: 12px 16px;
+	border-radius: 7px;
+	font-size: 13px;
+	border: 1px solid transparent;
+}
+
+.bwg-ai-notice.error {
+	background: var(--coral-light);
+	border-color: var(--coral);
+	color: var(--coral);
+}
+
+.bwg-ai-notice.success {
+	background: var(--green-light);
+	border-color: var(--green);
+	color: var(--green);
+}
+
+.bwg-ai-notice.info {
+	background: var(--gold-light);
+	border-color: var(--gold-mid);
+	color: var(--gold);
+}
+
+/* ============================================================
+   ACCESS CODE DISPLAY
+   ============================================================ */
+.bwg-ai-access-code-box {
+	background: var(--surface);
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	padding: 20px 24px;
+	margin-bottom: 24px;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 16px;
+	flex-wrap: wrap;
+}
+
+.bwg-ai-access-code-label {
+	font-family: 'IBM Plex Mono', monospace;
+	font-size: 10px;
+	letter-spacing: 0.12em;
+	text-transform: uppercase;
+	color: var(--ink3);
+	margin-bottom: 4px;
+}
+
+.bwg-ai-access-code-value {
+	font-family: 'IBM Plex Mono', monospace;
+	font-size: 28px;
+	font-weight: 500;
+	color: var(--ink);
+	letter-spacing: 0.15em;
+}
+
+.bwg-ai-copy-btn {
+	font-size: 12px;
+	padding: 7px 14px;
+	white-space: nowrap;
+}
+
+/* ============================================================
+   PROGRESS BAR
+   ============================================================ */
+.bwg-ai-progress-wrap {
+	margin-bottom: 28px;
+}
+
+.bwg-ai-progress-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: baseline;
+	margin-bottom: 8px;
+}
+
+.bwg-ai-progress-label {
+	font-size: 13px;
+	font-weight: 500;
+	color: var(--ink2);
+}
+
+.bwg-ai-progress-pct {
+	font-family: 'IBM Plex Mono', monospace;
+	font-size: 12px;
+	color: var(--ink3);
+}
+
+.bwg-ai-progress-bar {
+	height: 6px;
+	background: var(--surface2);
+	border-radius: 3px;
+	overflow: hidden;
+}
+
+.bwg-ai-progress-fill {
+	height: 100%;
+	background: var(--teal);
+	border-radius: 3px;
+	transition: width 0.4s ease;
+	width: 0%;
+}
+
+.bwg-ai-progress-task {
+	font-size: 12px;
+	color: var(--ink3);
+	margin-top: 6px;
+	font-family: 'IBM Plex Mono', monospace;
+}
+
+/* ============================================================
+   DISCOVERY RESULTS CARDS
+   ============================================================ */
+.bwg-ai-cards {
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+	margin-bottom: 24px;
+}
+
+.bwg-ai-card {
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	padding: 20px;
+	background: #fff;
+}
+
+.bwg-ai-card-label {
+	font-family: 'IBM Plex Mono', monospace;
+	font-size: 10px;
+	letter-spacing: 0.1em;
+	text-transform: uppercase;
+	color: var(--ink3);
+	margin-bottom: 12px;
+}
+
+.bwg-ai-card-row {
+	display: flex;
+	gap: 8px;
+	align-items: flex-start;
+	margin-bottom: 8px;
+	font-size: 13px;
+}
+
+.bwg-ai-card-row:last-child { margin-bottom: 0; }
+
+.bwg-ai-card-key {
+	color: var(--ink3);
+	min-width: 110px;
+	flex-shrink: 0;
+}
+
+.bwg-ai-card-val {
+	color: var(--ink);
+	word-break: break-word;
+}
+
+.bwg-ai-card-val.empty { color: var(--ink3); font-style: italic; }
+
+/* Editable field inside card */
+.bwg-ai-inline-input {
+	padding: 5px 9px;
+	font-size: 13px;
+	font-family: inherit;
+	color: var(--ink);
+	border: 1px solid var(--border);
+	border-radius: 5px;
+	width: 100%;
+	max-width: 360px;
+	outline: none;
+	background: #fff;
+	transition: border-color 0.15s;
+}
+
+.bwg-ai-inline-input:focus {
+	border-color: var(--teal);
+	box-shadow: 0 0 0 2px rgba(13,110,110,0.1);
+}
+
+/* ============================================================
+   FLAGS
+   ============================================================ */
+.bwg-ai-flags {
+	margin-bottom: 24px;
+}
+
+.bwg-ai-flags-title {
+	font-size: 13px;
+	font-weight: 600;
+	color: var(--ink2);
+	margin-bottom: 10px;
+}
+
+.bwg-ai-flag {
+	display: flex;
+	gap: 10px;
+	align-items: flex-start;
+	padding: 10px 14px;
+	border-radius: 7px;
+	font-size: 13px;
+	margin-bottom: 8px;
+	border: 1px solid transparent;
+}
+
+.bwg-ai-flag:last-child { margin-bottom: 0; }
+
+.bwg-ai-flag.high   { background: var(--coral-light); border-color: rgba(192,57,43,0.2); }
+.bwg-ai-flag.medium { background: var(--amber-light);  border-color: rgba(217,119,6,0.2); }
+.bwg-ai-flag.low    { background: var(--surface2);     border-color: var(--border); }
+
+.bwg-ai-flag-dot {
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
+	flex-shrink: 0;
+	margin-top: 5px;
+}
+
+.bwg-ai-flag.high   .bwg-ai-flag-dot { background: var(--coral); }
+.bwg-ai-flag.medium .bwg-ai-flag-dot { background: var(--amber); }
+.bwg-ai-flag.low    .bwg-ai-flag-dot { background: var(--ink3); }
+
+/* ============================================================
+   PIXEL / SOCIAL CHIPS
+   ============================================================ */
+.bwg-ai-chips {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	margin-top: 4px;
+}
+
+.bwg-ai-chip {
+	font-family: 'IBM Plex Mono', monospace;
+	font-size: 11px;
+	padding: 3px 9px;
+	border-radius: 4px;
+	background: var(--surface2);
+	border: 1px solid var(--border);
+	color: var(--ink2);
+}
+
+.bwg-ai-chip.pixel  { background: var(--coral-light); border-color: rgba(192,57,43,0.3); color: var(--coral); }
+.bwg-ai-chip.social { background: var(--teal-light);  border-color: rgba(13,110,110,0.3); color: var(--teal); }
+.bwg-ai-chip.tech   { background: var(--surface2);    border-color: var(--border); color: var(--ink3); }
+
+/* ============================================================
+   PHASE PLACEHOLDER (steps after phase 1)
+   ============================================================ */
+.bwg-ai-phase-next {
+	text-align: center;
+	padding: 40px 24px;
+}
+
+.bwg-ai-phase-next .bwg-ai-phase-icon {
+	font-size: 36px;
+	margin-bottom: 16px;
+}
+
+.bwg-ai-phase-next h3 {
+	font-family: 'DM Serif Display', Georgia, serif;
+	font-size: 22px;
+	font-weight: 400;
+	color: var(--ink);
+	margin: 0 0 10px;
+}
+
+.bwg-ai-phase-next p {
+	font-size: 14px;
+	color: var(--ink3);
+	max-width: 420px;
+	margin: 0 auto 24px;
+}
+
+/* ============================================================
+   COOLDOWN TIMER
+   ============================================================ */
+.bwg-ai-cooldown {
+	font-family: 'IBM Plex Mono', monospace;
+	font-size: 12px;
+	color: var(--ink3);
+	margin-top: 8px;
+}
+
+/* ============================================================
+   SPINNER
+   ============================================================ */
+.bwg-ai-spinner {
+	display: inline-block;
+	width: 16px;
+	height: 16px;
+	border: 2px solid rgba(255,255,255,0.3);
+	border-top-color: #fff;
+	border-radius: 50%;
+	animation: bwg-spin 0.7s linear infinite;
+	vertical-align: middle;
+}
+
+.bwg-ai-spinner.dark {
+	border-color: rgba(15,17,23,0.15);
+	border-top-color: var(--ink);
+}
+
+@keyframes bwg-spin { to { transform: rotate(360deg); } }
+
+/* ============================================================
+   DIVIDER
+   ============================================================ */
+.bwg-ai-divider {
+	border: none;
+	border-top: 1px solid var(--surface2);
+	margin: 24px 0;
+}
+
+/* ============================================================
+   RESPONSIVE
+   ============================================================ */
+@media (max-width: 560px) {
+	.bwg-ai-header  { padding: 24px 20px 20px; }
+	.bwg-ai-body    { padding: 24px 20px; }
+	.bwg-ai-notice  { margin: 0 20px 20px; }
+	.bwg-ai-header h2 { font-size: 22px; }
+	.bwg-ai-access-code-value { font-size: 22px; }
+	.bwg-ai-card-row { flex-direction: column; gap: 2px; }
+	.bwg-ai-card-key { min-width: unset; }
+}
