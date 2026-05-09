@@ -105,9 +105,9 @@ git push -u origin claude/read-files-plan-build-yho2p
 
 ## Build Status
 
-**Last completed milestone:** M7 — Phase 4 Screenshot gallery UI (ad cards, confirm/flag, add-accounts, Step 3 polling)
+**Last completed milestone:** M8 — Phase 5 Access request funnel (platform cards, request-access endpoint, CSV upload parsers, Step 5 UI + CSS)
 
-**Next milestone to build:** M8 — Phase 5 Access request funnel
+**Next milestone to build:** M9 — Executive report
 
 **Milestones:**
 - [x] Planning — docs written, todos set
@@ -119,10 +119,7 @@ git push -u origin claude/read-files-plan-build-yho2p
 - [x] M5 — Phase 2 EntityIQ integration
 - [x] M6 — Phase 3 Text compliance engine
 - [x] M7 — Phase 4 Screenshot gallery UI
-- [ ] M8 — Phase 5 Access request funnel
-- [ ] M6 — Phase 3 Text compliance engine
-- [ ] M7 — Phase 4 Screenshot gallery UI
-- [ ] M8 — Phase 5 Access request funnel
+- [x] M8 — Phase 5 Access request funnel
 - [ ] M9 — Executive report
 - [ ] M10 — Admin panel
 - [ ] Security review

@@ -7,12 +7,14 @@
  *   2 — Discovery review (confirm/edit discovered data)
  *   3 — Ad surface loading (EntityIQ running, polling for completion)
  *   4 — Ad gallery (confirm/flag each ad, add more accounts)
- *   5 — Access funnel stub (M8)
+ *   5 — Access funnel (platform cards, request access, CSV upload)
+ *   6 — Report stub (M9)
  *
  * DB step_completed ↔ render step mapping (resume):
  *   DB 0  → render 1 (discovery polling)
  *   DB 1  → render 2 (discovery review)
- *   DB 2+ → render 4 (gallery)
+ *   DB 2  → render 4 (gallery)
+ *   DB 3+ → render 5 (access funnel)
  */
 ( function ( $ ) {
 	'use strict';
@@ -38,6 +40,7 @@
 		flags                 : [],
 		ads                   : [],
 		adsConfirmed          : {},   // { db_ad_id: true (confirmed) | false (flagged) }
+		accessStatus          : {},   // { meta: 'pending'|'granted'|'export', google: ... }
 		pollTimer             : null,
 		pollAttempts          : 0,
 		adsSurfacePollTimer   : null,
@@ -685,7 +688,7 @@
 			.done( function () {
 				saveState();
 				showNotice( 'Selections saved! Advancing to access request step…', 'success' );
-				setTimeout( renderStep5Stub, 1200 );
+				setTimeout( renderStep5, 1200 );
 			} )
 			.fail( function ( xhr ) {
 				setLoading( '#bwg-ai-confirm-ads', false );
@@ -763,19 +766,268 @@
 	}
 
 	/* ------------------------------------------------------------------ */
-	/* Step 5 stub — Access funnel (M8)                                    */
+	/* Step 5 — Access funnel                                              */
 	/* ------------------------------------------------------------------ */
-	function renderStep5Stub() {
+	function renderStep5() {
 		state.step = 5;
+		saveState();
+
+		var platforms = [ 'meta', 'google' ];
+		var cardsHtml = platforms.map( function ( p ) {
+			return platformCardHtml( p, state.accessStatus[ p ] || 'none' );
+		} ).join( '' );
+
 		$steps.html(
-			header( 'Phase 3 of 5', 'Request Ad Account Access', 'To complete the deep audit, we need read-only access to your ad accounts. We\'ll send you step-by-step instructions.', 4 ) +
+			header( 'Phase 3 of 5', 'Request Ad Account Access', 'Grant us read-only access so we can pull full spend data and run a deeper compliance analysis. Pick your platform below.', 4 ) +
+			'<div class="bwg-ai-body">' +
+				'<p class="bwg-ai-access-intro">We only need <strong>read-only</strong> access — we cannot run, pause, or edit your ads. Step-by-step instructions will be sent to your email when you click "Request Access".</p>' +
+				'<div class="bwg-ai-platform-cards">' + cardsHtml + '</div>' +
+				'<div class="bwg-ai-continue-wrap" id="bwg-ai-access-continue" style="display:none;margin-top:32px;">' +
+					'<button class="bwg-ai-btn bwg-ai-btn-primary" id="bwg-ai-to-report">Continue to Your Report</button>' +
+					'<p style="font-size:12px;color:var(--ink3);margin-top:8px;">You can always come back to grant access once you\'ve completed the steps in your email.</p>' +
+				'</div>' +
+			'</div>'
+		);
+
+		platforms.forEach( bindPlatformCard );
+		maybeShowContinue();
+	}
+
+	function platformCardHtml( platform, status ) {
+		var labels  = { meta: 'Meta (Facebook / Instagram)', google: 'Google Ads' };
+		var icons   = { meta: '📘', google: '📊' };
+		var label   = labels[ platform ] || platform;
+		var icon    = icons[ platform ]  || '📁';
+		var badge   = statusBadgeHtml( status );
+
+		var actionHtml;
+		if ( status === 'granted' || status === 'export' ) {
+			actionHtml = '<div class="bwg-ai-platform-done">Access confirmed. Thank you!</div>';
+		} else {
+			var uploadZoneId = 'bwg-ai-upload-' + platform;
+			var uploadInputId = 'bwg-ai-file-' + platform;
+			actionHtml =
+				'<button class="bwg-ai-btn bwg-ai-btn-primary bwg-ai-request-btn" data-platform="' + esc( platform ) + '">' +
+					( status === 'pending' ? 'Re-send Instructions' : 'Request Access' ) +
+				'</button>' +
+				'<div class="bwg-ai-or-divider"><span>or upload an export instead</span></div>' +
+				'<div class="bwg-ai-upload-zone" id="' + uploadZoneId + '" data-platform="' + esc( platform ) + '">' +
+					'<input type="file" id="' + uploadInputId + '" accept=".csv,text/csv" style="display:none;">' +
+					'<div class="bwg-ai-upload-icon">&#8613;</div>' +
+					'<p>Drag &amp; drop a CSV export here, or <a href="#" class="bwg-ai-upload-browse" data-for="' + uploadInputId + '">browse</a></p>' +
+					'<p class="bwg-ai-upload-hint">CSV exported from ' + esc( label ) + ' Ads Manager &mdash; max 10MB</p>' +
+				'</div>';
+		}
+
+		var instructionsHtml =
+			'<div class="bwg-ai-instructions-toggle" data-platform="' + esc( platform ) + '">' +
+				'<button class="bwg-ai-link-btn bwg-ai-instr-toggle-btn" data-platform="' + esc( platform ) + '">' +
+					'View step-by-step instructions' +
+				'</button>' +
+			'</div>' +
+			'<div class="bwg-ai-instructions-body" id="bwg-ai-instr-' + platform + '" style="display:none;">' +
+				( platform === 'meta' ? metaInstructions() : googleInstructions() ) +
+			'</div>';
+
+		return '<div class="bwg-ai-platform-card" id="bwg-ai-card-' + esc( platform ) + '" data-platform="' + esc( platform ) + '">' +
+			'<div class="bwg-ai-platform-card-header">' +
+				'<span class="bwg-ai-platform-icon">' + icon + '</span>' +
+				'<span class="bwg-ai-platform-name">' + esc( label ) + '</span>' +
+				badge +
+			'</div>' +
+			'<div class="bwg-ai-platform-card-body" id="bwg-ai-card-body-' + esc( platform ) + '">' +
+				actionHtml +
+			'</div>' +
+			instructionsHtml +
+		'</div>';
+	}
+
+	function statusBadgeHtml( status ) {
+		var map = {
+			none    : [ 'Not requested', 'badge-none'    ],
+			pending : [ 'Pending',        'badge-pending' ],
+			granted : [ 'Granted',        'badge-granted' ],
+			export  : [ 'Export uploaded','badge-export'  ],
+		};
+		var pair  = map[ status ] || map.none;
+		return '<span class="bwg-ai-status-badge ' + pair[1] + '">' + pair[0] + '</span>';
+	}
+
+	function metaInstructions() {
+		var steps = [
+			'Go to <strong>Meta Business Suite</strong> (business.facebook.com) and log in as an admin.',
+			'Click <strong>Settings</strong> (gear icon, bottom-left) &rarr; <strong>Business Settings</strong>.',
+			'Under <strong>Users</strong>, click <strong>Partners</strong> &rarr; <strong>Add</strong>.',
+			'Enter Business ID <code>YOUR_BWG_BID</code> and click <strong>Next</strong>.',
+			'Under <strong>Assign Assets</strong>, select your <strong>Ad Accounts</strong> and toggle <strong>View Performance</strong> only.',
+			'Click <strong>Save Changes</strong>. You\'ll see our name appear in your Partners list.',
+			'Optionally, export your Ads Manager CSV: <strong>Ads Manager &rarr; Columns &rarr; Export</strong> and upload it below.',
+		];
+		return instructionListHtml( steps );
+	}
+
+	function googleInstructions() {
+		var steps = [
+			'Sign in to <strong>Google Ads</strong> (ads.google.com) as an account admin.',
+			'Click the <strong>Tools &amp; Settings</strong> wrench &rarr; <strong>Account access and security</strong>.',
+			'Click <strong>+ (Add user)</strong> and enter <code>access@bwg.agency</code>.',
+			'Set the access level to <strong>Read only</strong> and click <strong>Send invitation</strong>.',
+			'We\'ll accept the invite within 1 business day and notify you when data is visible.',
+			'Alternatively, export your campaigns: <strong>Campaigns &rarr; Download report</strong> (CSV) and upload it below.',
+		];
+		return instructionListHtml( steps );
+	}
+
+	function instructionListHtml( steps ) {
+		var html = '<ol class="bwg-ai-instr-list">';
+		steps.forEach( function ( s ) {
+			html += '<li>' + s + '</li>';
+		} );
+		html += '</ol>';
+		return html;
+	}
+
+	function bindPlatformCard( platform ) {
+		// Request-access button.
+		$( '#bwg-ai-card-' + platform ).on( 'click', '.bwg-ai-request-btn', function () {
+			submitRequestAccess( platform );
+		} );
+
+		// Instructions toggle.
+		$( '#bwg-ai-card-' + platform ).on( 'click', '.bwg-ai-instr-toggle-btn', function () {
+			var $body = $( '#bwg-ai-instr-' + platform );
+			$body.slideToggle( 200 );
+			$( this ).text( $body.is( ':hidden' ) ? 'View step-by-step instructions' : 'Hide instructions' );
+		} );
+
+		// Upload zone drag-and-drop.
+		bindUploadZone( platform );
+	}
+
+	function submitRequestAccess( platform ) {
+		var $btn = $( '#bwg-ai-card-' + platform + ' .bwg-ai-request-btn' );
+		var origText = $btn.text();
+		$btn.prop( 'disabled', true ).text( 'Sending…' );
+
+		apiPost( '/request-access', { session_id: state.sessionId, platform: platform } )
+			.done( function ( res ) {
+				state.accessStatus[ platform ] = res.status || 'pending';
+				saveState();
+				updatePlatformStatus( platform, state.accessStatus[ platform ] );
+				showNotice( 'Instructions sent to your email! Follow the steps to grant access.', 'success' );
+				maybeShowContinue();
+			} )
+			.fail( function ( xhr ) {
+				$btn.prop( 'disabled', false ).text( origText );
+				showNotice( apiError( xhr, 'Could not send request. Please try again.' ), 'error' );
+			} );
+	}
+
+	function bindUploadZone( platform ) {
+		var zoneId    = '#bwg-ai-upload-' + platform;
+		var inputId   = '#bwg-ai-file-' + platform;
+		var $zone     = $( zoneId );
+		if ( ! $zone.length ) { return; }
+
+		// Browse link.
+		$zone.on( 'click', '.bwg-ai-upload-browse', function ( e ) {
+			e.preventDefault();
+			$( inputId ).trigger( 'click' );
+		} );
+
+		// File input change.
+		$zone.find( 'input[type="file"]' ).on( 'change', function () {
+			if ( this.files && this.files[0] ) {
+				uploadCsvFile( platform, this.files[0] );
+			}
+		} );
+
+		// Drag-over highlight.
+		$zone.on( 'dragover', function ( e ) {
+			e.preventDefault();
+			$zone.addClass( 'drag-over' );
+		} );
+		$zone.on( 'dragleave drop', function () {
+			$zone.removeClass( 'drag-over' );
+		} );
+
+		// Drop.
+		$zone.on( 'drop', function ( e ) {
+			e.preventDefault();
+			var dt    = e.originalEvent.dataTransfer;
+			var files = dt && dt.files;
+			if ( files && files[0] ) {
+				uploadCsvFile( platform, files[0] );
+			}
+		} );
+	}
+
+	function uploadCsvFile( platform, file ) {
+		var $zone = $( '#bwg-ai-upload-' + platform );
+		$zone.addClass( 'uploading' ).find( 'p' ).first().text( 'Uploading…' );
+
+		var formData = new FormData();
+		formData.append( 'export_file', file );
+		formData.append( 'platform', platform );
+		formData.append( 'session_id', state.sessionId );
+
+		$.ajax( {
+			url         : window.bwgAI.restUrl + '/upload-export',
+			method      : 'POST',
+			headers     : { 'X-WP-Nonce': window.bwgAI.nonce },
+			data        : formData,
+			processData : false,
+			contentType : false,
+		} )
+		.done( function ( res ) {
+			state.accessStatus[ platform ] = 'export';
+			saveState();
+			updatePlatformStatus( platform, 'export' );
+			showNotice( 'Export uploaded! Parsed ' + ( res.rows_parsed || 0 ) + ' rows from your ' + platform + ' export.', 'success' );
+			maybeShowContinue();
+		} )
+		.fail( function ( xhr ) {
+			$zone.removeClass( 'uploading' ).find( 'p' ).first().text( 'Drag & drop a CSV export here, or browse' );
+			showNotice( apiError( xhr, 'Upload failed. Please check the file and try again.' ), 'error' );
+		} );
+	}
+
+	function updatePlatformStatus( platform, status ) {
+		var $card = $( '#bwg-ai-card-' + platform );
+		$card.find( '.bwg-ai-status-badge' ).replaceWith( statusBadgeHtml( status ) );
+
+		var $body = $( '#bwg-ai-card-body-' + platform );
+		if ( status === 'granted' || status === 'export' ) {
+			$body.html( '<div class="bwg-ai-platform-done">Access confirmed. Thank you!</div>' );
+		} else {
+			// Update just the button text if pending.
+			$body.find( '.bwg-ai-request-btn' ).prop( 'disabled', false ).text( 'Re-send Instructions' );
+			$body.find( '.bwg-ai-upload-zone' ).removeClass( 'uploading' );
+		}
+	}
+
+	function maybeShowContinue() {
+		var actioned = Object.keys( state.accessStatus ).some( function ( p ) {
+			return !! state.accessStatus[ p ];
+		} );
+		if ( actioned ) {
+			$( '#bwg-ai-access-continue' ).slideDown( 200 );
+			$( '#bwg-ai-to-report' ).off( 'click' ).on( 'click', renderReportStub );
+		}
+	}
+
+	function renderReportStub() {
+		state.step = 6;
+		saveState();
+		$steps.html(
+			header( 'Phase 4 of 5', 'Generating Your Report', 'Your audit is complete. We\'re building your executive intelligence report now.', 5 ) +
 			'<div class="bwg-ai-body">' +
 				'<div class="bwg-ai-phase-next">' +
-					'<div class="bwg-ai-phase-icon">🔑</div>' +
-					'<h3>Access Request Step Coming Soon</h3>' +
-					'<p>This phase is being released in the next update. Check your email — we\'ve sent you instructions for requesting ad account access on Meta and Google.</p>' +
+					'<div class="bwg-ai-phase-icon">📋</div>' +
+					'<h3>Report Generation</h3>' +
+					'<p>Your executive report is being assembled. This feature is coming in the next release — we\'ll email you as soon as it\'s ready.</p>' +
 					( window.bwgAI && window.bwgAI.scheduleUrl
-						? '<a href="' + esc( window.bwgAI.scheduleUrl ) + '" class="bwg-ai-btn bwg-ai-btn-gold" target="_blank" rel="noopener" style="margin-top:8px;">Book a Strategy Call</a>'
+						? '<a href="' + esc( window.bwgAI.scheduleUrl ) + '" class="bwg-ai-btn bwg-ai-btn-gold" target="_blank" rel="noopener" style="margin-top:16px;">Book a Strategy Call Now</a>'
 						: ''
 					) +
 				'</div>' +
@@ -807,9 +1059,12 @@
 				} else if ( dbStep === 1 ) {
 					// Discovery confirmed, waiting for EntityIQ or ads just arrived.
 					renderStep2();
-				} else {
-					// DB step 2+ means ads are in the database — go straight to gallery.
+				} else if ( dbStep === 2 ) {
+					// Ads arrived, but user hasn't confirmed yet — show gallery.
 					renderStep4();
+				} else {
+					// DB step 3+ — ads confirmed, user is in the access funnel.
+					renderStep5();
 				}
 			} )
 			.fail( function ( xhr ) {
@@ -826,7 +1081,7 @@
 		else if ( state.step === 2 ) { renderStep2(); }
 		else if ( state.step === 3 ) { renderStep3(); }
 		else if ( state.step === 4 ) { renderStep4(); }
-		else                         { renderStep5Stub(); }
+		else                         { renderStep5(); }
 	}
 
 	/* ------------------------------------------------------------------ */
@@ -1004,6 +1259,7 @@
 				flags        : state.flags,
 				ads          : state.ads,
 				adsConfirmed : state.adsConfirmed,
+				accessStatus : state.accessStatus,
 			} ) );
 		} catch ( e ) { /* storage full or private mode — silently ignore */ }
 	}

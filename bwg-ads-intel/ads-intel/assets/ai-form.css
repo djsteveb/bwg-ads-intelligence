@@ -872,6 +872,185 @@
 }
 
 /* ============================================================
+   STEP 5 — ACCESS FUNNEL
+   ============================================================ */
+.bwg-ai-access-intro {
+	font-size: 14px;
+	color: var(--ink2);
+	margin-bottom: 24px;
+	line-height: 1.6;
+}
+
+/* Platform cards grid */
+.bwg-ai-platform-cards {
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+}
+
+.bwg-ai-platform-card {
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	background: #fff;
+	overflow: hidden;
+}
+
+.bwg-ai-platform-card-header {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding: 16px 20px 14px;
+	border-bottom: 1px solid var(--surface2);
+}
+
+.bwg-ai-platform-icon {
+	font-size: 20px;
+	line-height: 1;
+}
+
+.bwg-ai-platform-name {
+	font-size: 15px;
+	font-weight: 600;
+	color: var(--ink);
+	flex: 1;
+}
+
+/* Status badges */
+.bwg-ai-status-badge {
+	font-size: 11px;
+	font-weight: 600;
+	letter-spacing: 0.04em;
+	padding: 3px 9px;
+	border-radius: 20px;
+	border: 1px solid transparent;
+}
+
+.bwg-ai-status-badge.badge-none    { background: var(--surface2); color: var(--ink3); border-color: var(--border); }
+.bwg-ai-status-badge.badge-pending { background: #fef9c3; color: #854d0e; border-color: #fde047; }
+.bwg-ai-status-badge.badge-granted { background: var(--green-light); color: var(--green); border-color: rgba(45,106,79,0.3); }
+.bwg-ai-status-badge.badge-export  { background: #ede9fe; color: #5b21b6; border-color: #c4b5fd; }
+
+/* Card body */
+.bwg-ai-platform-card-body {
+	padding: 18px 20px;
+}
+
+.bwg-ai-platform-done {
+	font-size: 14px;
+	font-weight: 500;
+	color: var(--green);
+	padding: 10px 0;
+}
+
+/* Or divider */
+.bwg-ai-or-divider {
+	display: flex;
+	align-items: center;
+	margin: 18px 0 14px;
+	gap: 12px;
+	color: var(--ink3);
+	font-size: 12px;
+}
+
+.bwg-ai-or-divider::before,
+.bwg-ai-or-divider::after {
+	content: '';
+	flex: 1;
+	height: 1px;
+	background: var(--border);
+}
+
+/* Upload zone */
+.bwg-ai-upload-zone {
+	border: 2px dashed var(--border);
+	border-radius: 8px;
+	padding: 24px 20px;
+	text-align: center;
+	cursor: pointer;
+	transition: border-color 0.2s, background 0.2s;
+}
+
+.bwg-ai-upload-zone:hover,
+.bwg-ai-upload-zone.drag-over {
+	border-color: var(--teal);
+	background: var(--teal-light);
+}
+
+.bwg-ai-upload-zone.uploading {
+	opacity: 0.6;
+	pointer-events: none;
+}
+
+.bwg-ai-upload-icon {
+	font-size: 24px;
+	color: var(--ink3);
+	margin-bottom: 8px;
+}
+
+.bwg-ai-upload-zone p {
+	font-size: 13px;
+	color: var(--ink2);
+	margin: 0 0 4px;
+}
+
+.bwg-ai-upload-hint {
+	font-size: 11px !important;
+	color: var(--ink3) !important;
+}
+
+.bwg-ai-upload-browse {
+	color: var(--teal);
+	text-decoration: underline;
+}
+
+/* Instructions toggle */
+.bwg-ai-instructions-toggle {
+	padding: 12px 20px;
+	border-top: 1px solid var(--surface2);
+	background: var(--surface);
+}
+
+.bwg-ai-link-btn {
+	background: none;
+	border: none;
+	padding: 0;
+	font-family: inherit;
+	font-size: 13px;
+	color: var(--teal);
+	cursor: pointer;
+	text-decoration: underline;
+}
+
+.bwg-ai-instructions-body {
+	padding: 16px 20px;
+	background: var(--surface);
+	border-top: 1px solid var(--border);
+}
+
+.bwg-ai-instr-list {
+	margin: 0;
+	padding-left: 20px;
+}
+
+.bwg-ai-instr-list li {
+	font-size: 13px;
+	color: var(--ink2);
+	line-height: 1.65;
+	margin-bottom: 8px;
+}
+
+.bwg-ai-instr-list li:last-child { margin-bottom: 0; }
+
+.bwg-ai-instr-list code {
+	font-family: 'IBM Plex Mono', monospace;
+	background: var(--surface2);
+	padding: 1px 5px;
+	border-radius: 3px;
+	font-size: 12px;
+	color: var(--ink);
+}
+
+/* ============================================================
    RESPONSIVE
    ============================================================ */
 @media (max-width: 560px) {
