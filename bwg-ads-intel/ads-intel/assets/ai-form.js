@@ -1019,20 +1019,54 @@
 	function renderReportStub() {
 		state.step = 6;
 		saveState();
+
 		$steps.html(
 			header( 'Phase 4 of 5', 'Generating Your Report', 'Your audit is complete. We\'re building your executive intelligence report now.', 5 ) +
 			'<div class="bwg-ai-body">' +
-				'<div class="bwg-ai-phase-next">' +
+				'<div class="bwg-ai-phase-next" id="bwg-ai-report-wrap">' +
 					'<div class="bwg-ai-phase-icon">📋</div>' +
-					'<h3>Report Generation</h3>' +
-					'<p>Your executive report is being assembled. This feature is coming in the next release — we\'ll email you as soon as it\'s ready.</p>' +
-					( window.bwgAI && window.bwgAI.scheduleUrl
-						? '<a href="' + esc( window.bwgAI.scheduleUrl ) + '" class="bwg-ai-btn bwg-ai-btn-gold" target="_blank" rel="noopener" style="margin-top:16px;">Book a Strategy Call Now</a>'
-						: ''
-					) +
+					'<h3>Building Report…</h3>' +
+					'<p>Assembling your executive intelligence report. This takes just a moment.</p>' +
+					'<div class="bwg-ai-progress-wrap" style="max-width:280px;margin:16px auto 0;">' +
+						'<div class="bwg-ai-progress-bar"><div class="bwg-ai-progress-fill bwg-ai-progress-indeterminate"></div></div>' +
+					'</div>' +
 				'</div>' +
 			'</div>'
 		);
+
+		apiPost( '/email-report', { session_id: state.sessionId } )
+			.done( function ( res ) {
+				var reportUrl = res.report_url || '';
+				var $wrap     = $( '#bwg-ai-report-wrap' );
+
+				$wrap.html(
+					'<div class="bwg-ai-phase-icon">&#127881;</div>' +
+					'<h3>Your Report Is Ready</h3>' +
+					'<p>We\'ve emailed your report link. You can also open it directly below.</p>' +
+					( reportUrl
+						? '<a href="' + esc( reportUrl ) + '" class="bwg-ai-btn bwg-ai-btn-primary" target="_blank" rel="noopener" style="margin-top:20px;display:inline-block;">View Executive Report</a>'
+						: ''
+					) +
+					( window.bwgAI && window.bwgAI.scheduleUrl
+						? '<br><a href="' + esc( window.bwgAI.scheduleUrl ) + '" class="bwg-ai-btn bwg-ai-btn-gold" target="_blank" rel="noopener" style="margin-top:12px;display:inline-block;">Book a Strategy Call</a>'
+						: ''
+					) +
+					( reportUrl
+						? '<p style="font-size:12px;color:var(--ink3);margin-top:16px;word-break:break-all;">' + esc( reportUrl ) + '</p>'
+						: ''
+					)
+				);
+			} )
+			.fail( function ( xhr ) {
+				var $wrap = $( '#bwg-ai-report-wrap' );
+				$wrap.html(
+					'<div class="bwg-ai-phase-icon">&#9888;</div>' +
+					'<h3>Report Generation Failed</h3>' +
+					'<p style="color:var(--coral);">' + esc( apiError( xhr, 'Could not generate your report. Please try again or use your access code to return later.' ) ) + '</p>' +
+					'<button class="bwg-ai-btn bwg-ai-btn-outline" id="bwg-ai-retry-report" style="margin-top:16px;">Try Again</button>'
+				);
+				$( '#bwg-ai-retry-report' ).on( 'click', renderReportStub );
+			} );
 	}
 
 	/* ------------------------------------------------------------------ */

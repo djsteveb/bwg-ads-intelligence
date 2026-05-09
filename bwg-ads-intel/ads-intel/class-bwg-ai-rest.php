@@ -539,6 +539,8 @@ class BWG_AI_Rest {
 
 	/**
 	 * GET /report/{token}  (public)
+	 * Browser requests (Accept: text/html) receive the rendered HTML template.
+	 * API requests receive JSON.
 	 */
 	public function get_report( WP_REST_Request $request ) {
 		$token = sanitize_text_field( $request->get_param( 'token' ) );
@@ -559,16 +561,50 @@ class BWG_AI_Rest {
 			return $this->error( 'report_not_found', 'Report not found or expired.', 404 );
 		}
 
+		$report_data = json_decode( $report->report_data, true ) ?? [];
+
+		// Browser request — render HTML template.
+		$accept = $request->get_header( 'Accept' ) ?? '';
+		if ( strpos( $accept, 'text/html' ) !== false ) {
+			// Extract all report_data keys into local scope for the template.
+			extract( $report_data, EXTR_SKIP );
+			// Ensure required variables have safe defaults.
+			$business_name     = isset( $business_name )     ? $business_name     : '';
+			$website_url       = isset( $website_url )       ? $website_url       : '';
+			$risk_score        = isset( $risk_score )        ? (int) $risk_score  : 0;
+			$wasted_spend      = isset( $wasted_spend )      ? $wasted_spend      : null;
+			$top_actions       = isset( $top_actions )       ? $top_actions       : [];
+			$platform_snapshot = isset( $platform_snapshot ) ? $platform_snapshot : [];
+			$whats_working     = isset( $whats_working )     ? $whats_working     : [];
+			$flag_counts       = isset( $flag_counts )       ? $flag_counts       : [ 'high' => 0, 'medium' => 0, 'low' => 0 ];
+			$total_ads         = isset( $total_ads )         ? (int) $total_ads   : 0;
+			$generated_at      = $report->generated_at;
+			$report_token      = $token;
+
+			$template = BWG_AI_DIR . 'admin/partials/report-template.php';
+			if ( file_exists( $template ) ) {
+				// Output HTML directly and exit to bypass WP JSON envelope.
+				ob_start();
+				include $template;
+				$html = ob_get_clean();
+				// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- template escapes all output.
+				echo $html;
+				exit;
+			}
+		}
+
+		// JSON response for API clients.
 		return new WP_REST_Response( [
 			'token'        => $token,
 			'audience'     => $report->audience_type,
 			'generated_at' => $report->generated_at,
-			'data'         => json_decode( $report->report_data, true ),
+			'data'         => $report_data,
 		], 200 );
 	}
 
 	/**
 	 * POST /email-report
+	 * Generates the executive report and emails the link to the session owner.
 	 */
 	public function email_report( WP_REST_Request $request ) {
 		$session_id = absint( $request->get_param( 'session_id' ) );
@@ -577,10 +613,25 @@ class BWG_AI_Rest {
 			return $session;
 		}
 
-		// M9 will implement report generation + email send.
-		BWG_AI_Session::log( $session->id, 'report_email_requested', 'Report email send requested.' );
+		$token = BWG_AI_Report::generate( $session->id );
+		if ( is_wp_error( $token ) ) {
+			return $token;
+		}
 
-		return new WP_REST_Response( [ 'ok' => true, 'message' => 'Report email queued.' ], 200 );
+		$report_url = rest_url( 'bwg/v1/ai/report/' . $token );
+
+		if ( class_exists( 'BWG_AI_Email' ) ) {
+			( new BWG_AI_Email() )->send_report_ready( $session, $token );
+		}
+
+		BWG_AI_Session::update_step( $session->id, 5 );
+		BWG_AI_Session::log( $session->id, 'report_emailed', "Token: {$token}" );
+
+		return new WP_REST_Response( [
+			'ok'         => true,
+			'token'      => $token,
+			'report_url' => $report_url,
+		], 200 );
 	}
 
 	/**
