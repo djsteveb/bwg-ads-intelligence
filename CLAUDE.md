@@ -105,13 +105,13 @@ git push -u origin claude/read-files-plan-build-yho2p
 
 ## Build Status
 
-**Last completed milestone:** Planning + documentation (this file, BUILD-PLAN.md, ARCHITECTURE.md, updated readme.md)
+**Last completed milestone:** M0 — Plugin scaffold (bootstrap, DB tables, loader, uninstall)
 
-**Next milestone to build:** M0 — Plugin Scaffold
+**Next milestone to build:** M1 — Session Layer + REST Skeleton
 
 **Milestones:**
 - [x] Planning — docs written, todos set
-- [ ] M0 — Plugin scaffold (bootstrap, DB tables, uninstall)
+- [x] M0 — Plugin scaffold (bootstrap, DB tables, uninstall)
 - [ ] M1 — Session layer + REST skeleton
 - [ ] M2 — Phase 1 Discovery Engine
 - [ ] M3 — Front-end form shortcode
