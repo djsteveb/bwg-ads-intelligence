@@ -207,10 +207,12 @@ If running standalone, these classes are bundled as stubs in `includes/fallbacks
 
 ## Development
 
-**Branch:** `claude/read-files-plan-build-yho2p`
+**Branch:** `claude/implement-email-layer-U9k6B`
+
+**Build status:** M0–M8 complete. Next: M9 — Executive Report.
 
 **For AI agents continuing this build:**  
-Read `CLAUDE.md` first — it contains the full context, build status, and a copy-paste prompt for new chat sessions.
+Read `CLAUDE.md` first — it contains the full context, current build status, and a copy-paste prompt (including M9 spec) for new chat sessions.
 
 **Build order:** Follow milestones in `docs/BUILD-PLAN.md`. Each milestone commits independently. After each commit, update the milestone checklist in `CLAUDE.md`.
 
