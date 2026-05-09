@@ -562,6 +562,316 @@
 }
 
 /* ============================================================
+   INDETERMINATE PROGRESS (Step 3 — EntityIQ loading)
+   ============================================================ */
+.bwg-ai-progress-indeterminate {
+	width: 40% !important;
+	animation: bwg-slide 1.6s ease-in-out infinite;
+}
+
+@keyframes bwg-slide {
+	0%   { transform: translateX(-100%); }
+	100% { transform: translateX(350%); }
+}
+
+/* ============================================================
+   COMPLIANCE BANNER (Step 4 — above gallery)
+   ============================================================ */
+.bwg-ai-compliance-banner {
+	padding: 14px 18px;
+	border-radius: 8px;
+	font-size: 14px;
+	margin-bottom: 24px;
+	border: 1px solid transparent;
+}
+
+.bwg-ai-compliance-banner.high {
+	background: var(--coral-light);
+	border-color: rgba(192,57,43,0.25);
+	color: var(--coral);
+}
+
+.bwg-ai-compliance-banner.ok {
+	background: var(--green-light);
+	border-color: rgba(45,106,79,0.25);
+	color: var(--green);
+}
+
+/* ============================================================
+   AD GALLERY GRID
+   ============================================================ */
+.bwg-ai-gallery {
+	display: grid;
+	grid-template-columns: repeat(2, 1fr);
+	gap: 16px;
+	margin-bottom: 24px;
+}
+
+/* ============================================================
+   AD CARD
+   ============================================================ */
+.bwg-ai-ad-card {
+	border: 2px solid var(--border);
+	border-radius: var(--radius);
+	background: #fff;
+	overflow: hidden;
+	display: flex;
+	flex-direction: column;
+	transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.bwg-ai-ad-card.confirmed {
+	border-color: var(--teal);
+	box-shadow: 0 0 0 3px rgba(13,110,110,0.1);
+}
+
+.bwg-ai-ad-card.flagged {
+	border-color: var(--coral);
+	box-shadow: 0 0 0 3px rgba(192,57,43,0.1);
+}
+
+/* Card top row: platform badge + flags + state label */
+.bwg-ai-ad-card-top {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 12px 14px 10px;
+	flex-wrap: wrap;
+}
+
+/* State labels — visible only when card is in that state */
+.bwg-ai-card-state-label {
+	display: none;
+	font-size: 11px;
+	font-weight: 600;
+	letter-spacing: 0.04em;
+	margin-left: auto;
+}
+
+.bwg-ai-ad-card.confirmed .confirmed-label {
+	display: inline;
+	color: var(--teal);
+}
+
+.bwg-ai-ad-card.flagged .flagged-label {
+	display: inline;
+	color: var(--coral);
+}
+
+/* ============================================================
+   PLATFORM BADGE
+   ============================================================ */
+.bwg-ai-platform-badge {
+	font-family: 'IBM Plex Mono', monospace;
+	font-size: 10px;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	padding: 3px 8px;
+	border-radius: 4px;
+	font-weight: 600;
+	background: var(--surface2);
+	color: var(--ink2);
+	border: 1px solid var(--border);
+}
+
+.bwg-ai-platform-badge.meta    { background: #e8eaf6; border-color: #c5cae9; color: #3949ab; }
+.bwg-ai-platform-badge.google  { background: #fce4ec; border-color: #f48fb1; color: #c62828; }
+.bwg-ai-platform-badge.linkedin{ background: #e3f2fd; border-color: #90caf9; color: #1565c0; }
+
+/* ============================================================
+   FLAG BADGE (count on card)
+   ============================================================ */
+.bwg-ai-flag-badge {
+	font-size: 11px;
+	font-weight: 600;
+	padding: 2px 8px;
+	border-radius: 12px;
+}
+
+.bwg-ai-flag-badge.high   { background: var(--coral-light); color: var(--coral); }
+.bwg-ai-flag-badge.medium { background: var(--amber-light);  color: var(--amber); }
+.bwg-ai-flag-badge.low    { background: var(--surface2);     color: var(--ink3); }
+
+/* ============================================================
+   AD IMAGE AREA
+   ============================================================ */
+.bwg-ai-ad-image {
+	width: 100%;
+	aspect-ratio: 16 / 9;
+	background: var(--surface2);
+	overflow: hidden;
+	flex-shrink: 0;
+}
+
+.bwg-ai-ad-image img {
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+	display: block;
+}
+
+.bwg-ai-ad-image-ph {
+	width: 100%;
+	height: 100%;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 12px;
+	color: var(--ink3);
+	font-style: italic;
+}
+
+/* ============================================================
+   AD COPY EXCERPT
+   ============================================================ */
+.bwg-ai-ad-copy {
+	font-size: 13px;
+	line-height: 1.55;
+	color: var(--ink2);
+	padding: 12px 14px 8px;
+	flex: 1;
+}
+
+/* ============================================================
+   AD META (run dates, spend)
+   ============================================================ */
+.bwg-ai-ad-meta {
+	font-family: 'IBM Plex Mono', monospace;
+	font-size: 11px;
+	color: var(--ink3);
+	padding: 0 14px 10px;
+}
+
+/* ============================================================
+   COMPLIANCE MINI FLAGS (inside card)
+   ============================================================ */
+.bwg-ai-ad-flags {
+	padding: 8px 14px;
+	border-top: 1px solid var(--surface2);
+}
+
+.bwg-ai-ad-flag-row {
+	display: flex;
+	align-items: flex-start;
+	gap: 7px;
+	font-size: 11px;
+	line-height: 1.4;
+	margin-bottom: 5px;
+	color: var(--ink2);
+}
+
+.bwg-ai-ad-flag-row:last-child { margin-bottom: 0; }
+
+.bwg-ai-ad-flag-row .bwg-ai-flag-dot {
+	width: 6px;
+	height: 6px;
+	border-radius: 50%;
+	flex-shrink: 0;
+	margin-top: 3px;
+}
+
+.bwg-ai-ad-flag-row.high   .bwg-ai-flag-dot { background: var(--coral); }
+.bwg-ai-ad-flag-row.medium .bwg-ai-flag-dot { background: var(--amber); }
+.bwg-ai-ad-flag-row.low    .bwg-ai-flag-dot { background: var(--ink3); }
+
+/* ============================================================
+   AD CARD ACTION BUTTONS
+   ============================================================ */
+.bwg-ai-ad-actions {
+	display: flex;
+	gap: 8px;
+	padding: 12px 14px;
+	border-top: 1px solid var(--surface2);
+	margin-top: auto;
+}
+
+.bwg-ai-btn-confirm-ad,
+.bwg-ai-btn-flag-ad {
+	flex: 1;
+	justify-content: center;
+	font-size: 12px;
+	font-weight: 600;
+	padding: 8px 10px;
+	border-radius: 6px;
+	border: 1px solid var(--border);
+	background: #fff;
+	color: var(--ink2);
+	cursor: pointer;
+	transition: background 0.15s, border-color 0.15s, color 0.15s;
+	font-family: inherit;
+}
+
+.bwg-ai-btn-confirm-ad:hover { background: var(--teal-light); border-color: var(--teal); color: var(--teal); }
+.bwg-ai-btn-flag-ad:hover    { background: var(--coral-light); border-color: var(--coral); color: var(--coral); }
+
+/* Highlight the matching button when card is in a state */
+.bwg-ai-ad-card.confirmed .bwg-ai-btn-confirm-ad { background: var(--teal); border-color: var(--teal); color: #fff; }
+.bwg-ai-ad-card.flagged   .bwg-ai-btn-flag-ad    { background: var(--coral); border-color: var(--coral); color: #fff; }
+
+/* ============================================================
+   GALLERY FOOTER (count + submit)
+   ============================================================ */
+.bwg-ai-gallery-footer {
+	margin-bottom: 24px;
+}
+
+.bwg-ai-gallery-count {
+	font-size: 12px;
+	color: var(--ink3);
+}
+
+/* ============================================================
+   ADD MORE ACCOUNTS SECTION
+   ============================================================ */
+.bwg-ai-add-accounts-wrap {
+	border-top: 1px solid var(--surface2);
+	padding-top: 20px;
+	margin-top: 8px;
+}
+
+.bwg-ai-btn-block {
+	width: 100%;
+	justify-content: center;
+}
+
+.bwg-ai-add-accounts-form {
+	background: var(--surface);
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	padding: 20px;
+}
+
+.bwg-ai-acct-row {
+	display: flex;
+	gap: 8px;
+	margin-bottom: 10px;
+}
+
+.bwg-ai-acct-row select,
+.bwg-ai-acct-row input[type="text"] {
+	padding: 9px 12px;
+	font-size: 13px;
+	font-family: inherit;
+	color: var(--ink);
+	background: #fff;
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	outline: none;
+	transition: border-color 0.15s;
+}
+
+.bwg-ai-acct-row select { flex: 0 0 auto; min-width: 200px; }
+.bwg-ai-acct-row input  { flex: 1; }
+
+.bwg-ai-acct-row select:focus,
+.bwg-ai-acct-row input:focus { border-color: var(--teal); box-shadow: 0 0 0 2px rgba(13,110,110,0.1); }
+
+.bwg-ai-btn-sm {
+	font-size: 12px;
+	padding: 7px 14px;
+}
+
+/* ============================================================
    RESPONSIVE
    ============================================================ */
 @media (max-width: 560px) {
@@ -572,4 +882,9 @@
 	.bwg-ai-access-code-value { font-size: 22px; }
 	.bwg-ai-card-row { flex-direction: column; gap: 2px; }
 	.bwg-ai-card-key { min-width: unset; }
+
+	/* Gallery — single column on mobile */
+	.bwg-ai-gallery { grid-template-columns: 1fr; }
+	.bwg-ai-acct-row { flex-direction: column; }
+	.bwg-ai-acct-row select { min-width: unset; }
 }

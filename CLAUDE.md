@@ -105,9 +105,9 @@ git push -u origin claude/read-files-plan-build-yho2p
 
 ## Build Status
 
-**Last completed milestone:** M6 — Phase 3 Text compliance engine (12 rules across HIPAA/policy/best-practice tiers)
+**Last completed milestone:** M7 — Phase 4 Screenshot gallery UI (ad cards, confirm/flag, add-accounts, Step 3 polling)
 
-**Next milestone to build:** M7 — Phase 4 Screenshot gallery UI
+**Next milestone to build:** M8 — Phase 5 Access request funnel
 
 **Milestones:**
 - [x] Planning — docs written, todos set
@@ -118,7 +118,8 @@ git push -u origin claude/read-files-plan-build-yho2p
 - [x] M4 — Email layer
 - [x] M5 — Phase 2 EntityIQ integration
 - [x] M6 — Phase 3 Text compliance engine
-- [ ] M7 — Phase 4 Screenshot gallery UI
+- [x] M7 — Phase 4 Screenshot gallery UI
+- [ ] M8 — Phase 5 Access request funnel
 - [ ] M6 — Phase 3 Text compliance engine
 - [ ] M7 — Phase 4 Screenshot gallery UI
 - [ ] M8 — Phase 5 Access request funnel

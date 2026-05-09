@@ -1,14 +1,18 @@
 /**
  * BWG Ads Intelligence — Front-End Step Machine
  *
- * Steps:
+ * Steps (front-end rendering):
  *   0 — URL + email entry form
  *   1 — Discovery running (progress bar polling)
  *   2 — Discovery review (confirm/edit discovered data)
- *   3 — Phase 2 queued (ad surface loading — filled in M7)
+ *   3 — Ad surface loading (EntityIQ running, polling for completion)
+ *   4 — Ad gallery (confirm/flag each ad, add more accounts)
+ *   5 — Access funnel stub (M8)
  *
- * State is persisted to localStorage keyed by session_id as a fallback
- * if the user closes and reopens without a resume link.
+ * DB step_completed ↔ render step mapping (resume):
+ *   DB 0  → render 1 (discovery polling)
+ *   DB 1  → render 2 (discovery review)
+ *   DB 2+ → render 4 (gallery)
  */
 ( function ( $ ) {
 	'use strict';
@@ -16,22 +20,28 @@
 	/* ------------------------------------------------------------------ */
 	/* Config                                                               */
 	/* ------------------------------------------------------------------ */
-	var STORAGE_KEY   = 'bwgai_session';
-	var POLL_INTERVAL = 3000; // ms between /discovery-status polls
+	var STORAGE_KEY        = 'bwgai_session';
+	var POLL_INTERVAL      = 3000;  // discovery poll ms
+	var ADS_POLL_INTERVAL  = 5000;  // ad-surface poll ms
+	var ADS_POLL_MAX       = 120;   // 10 minutes before giving up
 
 	/* ------------------------------------------------------------------ */
 	/* State                                                                */
 	/* ------------------------------------------------------------------ */
 	var state = {
-		sessionId    : null,
-		accessCode   : '',
-		resumeToken  : '',
-		step         : 0,
-		websiteUrl   : '',
-		discovered   : null,
-		flags        : [],
-		pollTimer    : null,
-		pollAttempts : 0,
+		sessionId             : null,
+		accessCode            : '',
+		resumeToken           : '',
+		step                  : 0,
+		websiteUrl            : '',
+		discovered            : null,
+		flags                 : [],
+		ads                   : [],
+		adsConfirmed          : {},   // { db_ad_id: true (confirmed) | false (flagged) }
+		pollTimer             : null,
+		pollAttempts          : 0,
+		adsSurfacePollTimer   : null,
+		adsSurfacePollAttempts: 0,
 	};
 
 	/* ------------------------------------------------------------------ */
@@ -45,12 +55,9 @@
 	/* Boot                                                                 */
 	/* ------------------------------------------------------------------ */
 	function init() {
-		// Try resume token / access code from URL (set by PHP on shortcode).
 		var resumeToken = ( window.bwgAI && window.bwgAI.resumeToken ) || '';
 		var accessCode  = ( window.bwgAI && window.bwgAI.accessCode  ) || '';
-
-		// Also check localStorage for an in-progress session.
-		var saved = loadState();
+		var saved       = loadState();
 
 		if ( resumeToken || accessCode ) {
 			doResume( resumeToken, accessCode );
@@ -58,8 +65,6 @@
 		}
 
 		if ( saved && saved.sessionId ) {
-			// Restore from localStorage without a full resume call —
-			// just render the saved step. User can enter access code if needed.
 			restoreFromLocal( saved );
 			return;
 		}
@@ -85,9 +90,7 @@
 					field( 'email', 'Your Email', 'email', 'you@example.com', 'We\'ll send you your access code and a progress update when we find your ads.' ) +
 					captchaHtml +
 					'<div class="bwg-ai-btn-row">' +
-						'<button type="submit" class="bwg-ai-btn bwg-ai-btn-primary" id="bwg-ai-submit-0">' +
-							'Start Free Audit' +
-						'</button>' +
+						'<button type="submit" class="bwg-ai-btn bwg-ai-btn-primary" id="bwg-ai-submit-0">Start Free Audit</button>' +
 					'</div>' +
 					'<p style="font-size:12px;color:var(--ink3);margin-top:16px;">Already started? ' +
 						'<a href="#" id="bwg-ai-show-resume" style="color:var(--teal);">Enter your access code</a>' +
@@ -102,7 +105,6 @@
 			'</div>'
 		);
 
-		// Reinitialise Turnstile if loaded.
 		if ( window.turnstile ) {
 			window.turnstile.render( '.cf-turnstile' );
 		}
@@ -129,7 +131,6 @@
 		var url   = $( '#website_url' ).val().trim();
 		var email = $( '#email' ).val().trim();
 
-		// Client-side validation.
 		if ( ! url || ! isValidUrl( url ) ) {
 			return fieldError( 'website_url', 'Please enter a valid website URL (https://...).' );
 		}
@@ -144,13 +145,7 @@
 
 		setLoading( '#bwg-ai-submit-0', true );
 
-		var payload = {
-			website_url   : url,
-			email         : email,
-			captcha_token : captchaToken,
-		};
-
-		apiPost( '/start', payload )
+		apiPost( '/start', { website_url: url, email: email, captcha_token: captchaToken } )
 			.done( function ( res ) {
 				state.sessionId   = res.session_id;
 				state.accessCode  = res.access_code;
@@ -161,13 +156,11 @@
 			} )
 			.fail( function ( xhr ) {
 				setLoading( '#bwg-ai-submit-0', false );
-				var msg = apiError( xhr, 'Could not start the audit. Please try again.' );
-				// If rate limited, show cooldown.
 				if ( xhr.status === 429 ) {
-					var retryAfter = ( xhr.responseJSON && xhr.responseJSON.data && xhr.responseJSON.data.retry_after ) || 60;
-					showCooldown( retryAfter );
+					var retry = ( xhr.responseJSON && xhr.responseJSON.data && xhr.responseJSON.data.retry_after ) || 60;
+					showCooldown( retry );
 				} else {
-					showNotice( msg, 'error' );
+					showNotice( apiError( xhr, 'Could not start the audit. Please try again.' ), 'error' );
 				}
 				if ( window.turnstile ) { window.turnstile.reset(); }
 			} );
@@ -235,7 +228,6 @@
 				}
 
 				state.pollAttempts++;
-				// Bail out after 3 minutes of polling (60 × 3s).
 				if ( state.pollAttempts > 60 ) {
 					clearPollTimer();
 					showNotice( 'Discovery is taking longer than expected. Please refresh or use your access code to resume.', 'info' );
@@ -255,18 +247,18 @@
 		$( '#bwg-ai-pct' ).text( pctInt + '%' );
 
 		var labels = {
-			starting      : 'Starting…',
-			fetch         : 'Fetching website…',
-			nap           : 'Extracting business details…',
-			gbp           : 'Matching Google Business Profile…',
-			social        : 'Detecting social profiles…',
-			pixels        : 'Scanning for tracking pixels…',
-			tech_stack    : 'Fingerprinting tech stack…',
-			whois         : 'Looking up WHOIS / domain info…',
-			legitscript   : 'Checking LegitScript status…',
-			licensure     : 'Checking licensure signals…',
-			complete      : 'Discovery complete!',
-			in_progress   : 'Analysing…',
+			starting    : 'Starting…',
+			fetch       : 'Fetching website…',
+			nap         : 'Extracting business details…',
+			gbp         : 'Matching Google Business Profile…',
+			social      : 'Detecting social profiles…',
+			pixels      : 'Scanning for tracking pixels…',
+			tech_stack  : 'Fingerprinting tech stack…',
+			whois       : 'Looking up WHOIS / domain info…',
+			legitscript : 'Checking LegitScript status…',
+			licensure   : 'Checking licensure signals…',
+			complete    : 'Discovery complete!',
+			in_progress : 'Analysing…',
 		};
 		var label = labels[ task ] || ( task ? task : 'Scanning…' );
 		$( '#bwg-ai-task' ).text( label );
@@ -286,14 +278,14 @@
 			{ key: 'Phone',   val: d.business_phone,   editable: 'business_phone' },
 		] );
 
-		var gbp    = d.gbp || {};
+		var gbp     = d.gbp || {};
 		var gbpHtml = cardHtml( 'Google Business Profile', [
 			{ key: 'Status',   val: gbp.place_id ? 'Found' : 'Not found' },
 			{ key: 'Rating',   val: gbp.rating ? gbp.rating + ' ★ (' + gbp.review_count + ' reviews)' : '' },
 			{ key: 'Category', val: gbp.category },
 		] );
 
-		var social    = d.social || {};
+		var social      = d.social || {};
 		var socialChips = chipsHtml( [
 			social.facebook  ? { label: 'Facebook',  cls: 'social' } : null,
 			social.instagram ? { label: 'Instagram', cls: 'social' } : null,
@@ -306,16 +298,16 @@
 			( socialChips || '<span style="font-size:13px;color:var(--ink3)">None detected</span>' ) +
 			'</div>';
 
-		var pixels    = d.pixels || {};
+		var pixels     = d.pixels || {};
 		var pixelChips = chipsHtml( [
-			pixels.meta     ? { label: 'Meta Pixel '  + pixels.meta,     cls: 'pixel' } : null,
-			pixels.gtm      ? { label: 'GTM '         + pixels.gtm,      cls: 'pixel' } : null,
-			pixels.ga4      ? { label: 'GA4 '         + pixels.ga4,      cls: 'pixel' } : null,
-			pixels.tiktok   ? { label: 'TikTok Pixel '+ pixels.tiktok,   cls: 'pixel' } : null,
-			pixels.linkedin ? { label: 'LinkedIn '    + pixels.linkedin,  cls: 'pixel' } : null,
+			pixels.meta     ? { label: 'Meta Pixel '   + pixels.meta,     cls: 'pixel' } : null,
+			pixels.gtm      ? { label: 'GTM '          + pixels.gtm,      cls: 'pixel' } : null,
+			pixels.ga4      ? { label: 'GA4 '          + pixels.ga4,      cls: 'pixel' } : null,
+			pixels.tiktok   ? { label: 'TikTok Pixel ' + pixels.tiktok,   cls: 'pixel' } : null,
+			pixels.linkedin ? { label: 'LinkedIn '     + pixels.linkedin,  cls: 'pixel' } : null,
 		] );
 		var pixelHtml = '<div class="bwg-ai-card">' +
-			'<div class="bwg-ai-card-label">Tracking Pixels & Tags</div>' +
+			'<div class="bwg-ai-card-label">Tracking Pixels &amp; Tags</div>' +
 			( pixelChips || '<span style="font-size:13px;color:var(--ink3)">None detected</span>' ) +
 			'</div>';
 
@@ -328,10 +320,10 @@
 
 		var whois    = d.whois || {};
 		var whoisHtml = cardHtml( 'Domain Intel', [
-			{ key: 'Registrar',  val: whois.registrar },
-			{ key: 'Registered', val: whois.created_at },
-			{ key: 'Expires',    val: whois.expires_at },
-			{ key: 'Nameservers',val: whois.nameservers },
+			{ key: 'Registrar',   val: whois.registrar },
+			{ key: 'Registered',  val: whois.created_at },
+			{ key: 'Expires',     val: whois.expires_at },
+			{ key: 'Nameservers', val: whois.nameservers },
 		] );
 
 		var lsStatus = d.legitscript || 'unknown';
@@ -359,13 +351,7 @@
 			'<div class="bwg-ai-body">' +
 				flagsHtml +
 				'<div class="bwg-ai-cards">' +
-					businessHtml +
-					gbpHtml +
-					socialHtml +
-					pixelHtml +
-					techHtml +
-					whoisHtml +
-					lsHtml +
+					businessHtml + gbpHtml + socialHtml + pixelHtml + techHtml + whoisHtml + lsHtml +
 				'</div>' +
 				'<div class="bwg-ai-btn-row">' +
 					'<button class="bwg-ai-btn bwg-ai-btn-primary" id="bwg-ai-confirm-discovery">Looks Good — Continue</button>' +
@@ -390,7 +376,6 @@
 			business_phone   : $( '#edit-business_phone' ).length   ? $( '#edit-business_phone' ).val()   : undefined,
 		};
 
-		// Remove undefined fields.
 		Object.keys( payload ).forEach( function ( k ) {
 			if ( payload[ k ] === undefined ) { delete payload[ k ]; }
 		} );
@@ -407,17 +392,21 @@
 	}
 
 	/* ------------------------------------------------------------------ */
-	/* Step 3 — Phase 2 loading (ad surface queued)                        */
+	/* Step 3 — Ad surface loading (EntityIQ running, polls for completion)*/
 	/* ------------------------------------------------------------------ */
 	function renderStep3() {
 		state.step = 3;
 		$steps.html(
-			header( 'Phase 2 of 5', 'Pulling Your Ad Library', 'We\'re now fetching your active and historical ads from Meta Ad Library. This usually takes 1–3 minutes.', 3 ) +
+			header( 'Phase 2 of 5', 'Pulling Your Ad Library', 'We\'re fetching your active and historical ads from Meta Ad Library. This usually takes 1–3 minutes.', 3 ) +
 			'<div class="bwg-ai-body">' +
 				'<div class="bwg-ai-phase-next">' +
 					'<div class="bwg-ai-phase-icon">📊</div>' +
 					'<h3>Ad Surface Scan Running</h3>' +
-					'<p>We\'re pulling your ads from Meta Ad Library. You\'ll receive an email when we have results to show you.</p>' +
+					'<p>We\'re pulling your ads from Meta Ad Library. This page will update automatically when results are ready.</p>' +
+					'<div class="bwg-ai-progress-wrap" style="max-width:320px;margin:0 auto 24px;">' +
+						'<div class="bwg-ai-progress-bar"><div class="bwg-ai-progress-fill bwg-ai-progress-indeterminate" id="bwg-ai-ads-fill"></div></div>' +
+						'<div class="bwg-ai-progress-task" id="bwg-ai-ads-task" style="text-align:center;margin-top:8px;">Scanning…</div>' +
+					'</div>' +
 					( window.bwgAI && window.bwgAI.scheduleUrl
 						? '<a href="' + esc( window.bwgAI.scheduleUrl ) + '" class="bwg-ai-btn bwg-ai-btn-gold" target="_blank" rel="noopener">Book a Discovery Call</a>'
 						: ''
@@ -440,6 +429,358 @@
 			var $btn = $( this );
 			setTimeout( function () { $btn.text( 'Copy' ); }, 2000 );
 		} );
+
+		// Poll the ad-surface endpoint so we can auto-advance when ads arrive.
+		startAdSurfacePolling();
+	}
+
+	function startAdSurfacePolling() {
+		state.adsSurfacePollAttempts = 0;
+		clearAdSurfacePoll();
+		state.adsSurfacePollTimer = setTimeout( pollAdSurface, ADS_POLL_INTERVAL );
+	}
+
+	function pollAdSurface() {
+		if ( ! state.sessionId ) { return; }
+
+		apiGet( '/ad-surface-status/' + state.sessionId )
+			.done( function ( res ) {
+				var dbStep   = parseInt( res.step, 10 );
+				var adsFound = parseInt( res.ads_found, 10 );
+
+				if ( dbStep >= 2 || adsFound > 0 ) {
+					clearAdSurfacePoll();
+					$( '#bwg-ai-ads-task' ).text( 'Found ' + adsFound + ' ad' + ( adsFound === 1 ? '' : 's' ) + '!' );
+					setTimeout( renderStep4, 800 );
+					return;
+				}
+
+				state.adsSurfacePollAttempts++;
+				if ( state.adsSurfacePollAttempts >= ADS_POLL_MAX ) {
+					clearAdSurfacePoll();
+					$( '#bwg-ai-ads-task' ).text( 'Still working…' );
+					showNotice( 'This is taking longer than usual. We\'ll email you when results are ready. Use your access code to return.', 'info' );
+					return;
+				}
+
+				state.adsSurfacePollTimer = setTimeout( pollAdSurface, ADS_POLL_INTERVAL );
+			} )
+			.fail( function () {
+				state.adsSurfacePollTimer = setTimeout( pollAdSurface, ADS_POLL_INTERVAL * 2 );
+			} );
+	}
+
+	function clearAdSurfacePoll() {
+		if ( state.adsSurfacePollTimer ) {
+			clearTimeout( state.adsSurfacePollTimer );
+			state.adsSurfacePollTimer = null;
+		}
+	}
+
+	/* ------------------------------------------------------------------ */
+	/* Step 4 — Ad gallery: confirm / flag / add more accounts             */
+	/* ------------------------------------------------------------------ */
+	function renderStep4() {
+		clearAdSurfacePoll();
+		state.step = 4;
+
+		$steps.html(
+			header( 'Phase 2 of 5', 'Your Ads — Confirm or Flag', 'Review every ad we found. Confirm the ones that belong to your account and flag any you don\'t recognize.', 4 ) +
+			'<div class="bwg-ai-body">' +
+				'<div id="bwg-ai-gallery-wrap">' +
+					'<div style="text-align:center;padding:48px 0;">' +
+						'<div class="bwg-ai-spinner dark"></div>' +
+						'<p style="font-size:13px;color:var(--ink3);margin-top:14px;">Loading your ads…</p>' +
+					'</div>' +
+				'</div>' +
+			'</div>'
+		);
+
+		apiGet( '/ads/' + state.sessionId )
+			.done( function ( res ) {
+				state.ads = res.ads || [];
+				saveState();
+				renderGallery();
+			} )
+			.fail( function ( xhr ) {
+				$( '#bwg-ai-gallery-wrap' ).html(
+					'<p style="color:var(--coral);font-size:14px;">Could not load ads. ' + apiError( xhr, 'Please refresh and try again.' ) + '</p>'
+				);
+			} );
+	}
+
+	function renderGallery() {
+		var ads = state.ads;
+
+		if ( ! ads.length ) {
+			$( '#bwg-ai-gallery-wrap' ).html(
+				'<div style="text-align:center;padding:32px 0 24px;">' +
+					'<p style="font-size:15px;color:var(--ink2);font-weight:500;margin-bottom:8px;">No ads found yet.</p>' +
+					'<p style="font-size:13px;color:var(--ink3);max-width:400px;margin:0 auto;">This can happen if your Meta Ad Library page isn\'t publicly listed. Add your ad account details below so we can search more specifically.</p>' +
+				'</div>' +
+				addAccountsFormHtml( 'main' )
+			);
+			bindAddAccountsForm( 'main' );
+			return;
+		}
+
+		// Compliance summary banner.
+		var totalFlags = 0;
+		ads.forEach( function ( ad ) { totalFlags += ( ad.compliance_flags || [] ).length; } );
+		var flagBanner = totalFlags
+			? '<div class="bwg-ai-compliance-banner high"><strong>' + totalFlags + ' compliance flag' + ( totalFlags === 1 ? '' : 's' ) + '</strong> found across ' + ads.length + ' ad' + ( ads.length === 1 ? '' : 's' ) + '. Review the highlighted issues below before your next campaign spend.</div>'
+			: '<div class="bwg-ai-compliance-banner ok">No major compliance issues detected in your ad copy.</div>';
+
+		var cardsHtml = ads.map( function ( ad ) { return adCardHtml( ad ); } ).join( '' );
+
+		$( '#bwg-ai-gallery-wrap' ).html(
+			flagBanner +
+			'<div class="bwg-ai-gallery">' + cardsHtml + '</div>' +
+			'<div class="bwg-ai-gallery-footer">' +
+				'<div class="bwg-ai-btn-row">' +
+					'<button class="bwg-ai-btn bwg-ai-btn-primary" id="bwg-ai-confirm-ads">Save Selections &amp; Continue</button>' +
+					'<span class="bwg-ai-gallery-count">' + ads.length + ' ad' + ( ads.length === 1 ? '' : 's' ) + ' found</span>' +
+				'</div>' +
+			'</div>' +
+			'<div class="bwg-ai-add-accounts-wrap">' +
+				'<button class="bwg-ai-btn bwg-ai-btn-outline bwg-ai-btn-block" id="bwg-ai-toggle-add-accounts">+ Add More Ad Accounts</button>' +
+				'<div id="bwg-ai-add-accounts-panel" style="display:none;margin-top:16px;">' +
+					addAccountsFormHtml( 'panel' ) +
+				'</div>' +
+			'</div>'
+		);
+
+		// Restore any saved confirm/flag state.
+		Object.keys( state.adsConfirmed ).forEach( function ( adId ) {
+			applyCardState( adId, state.adsConfirmed[ adId ] );
+		} );
+
+		// Card action buttons (direct binding — elements exist now).
+		$( '#bwg-ai-gallery-wrap' ).on( 'click', '.bwg-ai-btn-confirm-ad', function () {
+			var adId = $( this ).closest( '.bwg-ai-ad-card' ).data( 'ad-id' );
+			toggleAdState( String( adId ), true );
+		} );
+		$( '#bwg-ai-gallery-wrap' ).on( 'click', '.bwg-ai-btn-flag-ad', function () {
+			var adId = $( this ).closest( '.bwg-ai-ad-card' ).data( 'ad-id' );
+			toggleAdState( String( adId ), false );
+		} );
+
+		$( '#bwg-ai-confirm-ads' ).on( 'click', submitConfirmAds );
+
+		$( '#bwg-ai-toggle-add-accounts' ).on( 'click', function () {
+			var $panel = $( '#bwg-ai-add-accounts-panel' );
+			$panel.slideToggle( 200 );
+			$( this ).text( $panel.is( ':hidden' ) ? '+ Add More Ad Accounts' : '− Hide' );
+		} );
+
+		bindAddAccountsForm( 'panel' );
+	}
+
+	/* Ad card HTML --------------------------------------------------- */
+
+	function adCardHtml( ad ) {
+		var adId      = String( ad.id );
+		var confirmed = state.adsConfirmed[ adId ];
+		var cardExtra = confirmed === true ? ' confirmed' : ( confirmed === false ? ' flagged' : '' );
+
+		var flags    = ad.compliance_flags || [];
+		var topSev   = flags.length ? ( flags[0].severity || 'low' ) : '';
+		var flagBadge = flags.length
+			? '<span class="bwg-ai-flag-badge ' + esc( topSev ) + '">' + flags.length + ' flag' + ( flags.length === 1 ? '' : 's' ) + '</span>'
+			: '';
+
+		var excerpt = ad.ad_copy
+			? esc( ad.ad_copy.substring( 0, 220 ) ) + ( ad.ad_copy.length > 220 ? '…' : '' )
+			: '';
+
+		var imgHtml;
+		if ( ad.ad_image_url ) {
+			imgHtml = '<div class="bwg-ai-ad-image">' +
+				'<img src="' + esc( ad.ad_image_url ) + '" alt="" loading="lazy"' +
+				' onerror="this.parentNode.innerHTML=\'<div class=\\\"bwg-ai-ad-image-ph\\\">No image</div>\';">' +
+				'</div>';
+		} else {
+			imgHtml = '<div class="bwg-ai-ad-image"><div class="bwg-ai-ad-image-ph">No image</div></div>';
+		}
+
+		var metaParts = [];
+		if ( ad.run_dates )   { metaParts.push( esc( ad.run_dates ) ); }
+		if ( ad.spend_range ) { metaParts.push( esc( ad.spend_range ) ); }
+		var metaLine = metaParts.length
+			? '<div class="bwg-ai-ad-meta">' + metaParts.join( ' &nbsp;·&nbsp; ' ) + '</div>'
+			: '';
+
+		return '<div class="bwg-ai-ad-card' + cardExtra + '" data-ad-id="' + esc( adId ) + '">' +
+			'<div class="bwg-ai-ad-card-top">' +
+				'<span class="bwg-ai-platform-badge ' + esc( ad.platform || 'meta' ) + '">' + esc( ad.platform || 'meta' ) + '</span>' +
+				flagBadge +
+				'<span class="bwg-ai-card-state-label confirmed-label">✓ Confirmed</span>' +
+				'<span class="bwg-ai-card-state-label flagged-label">✗ Not mine</span>' +
+			'</div>' +
+			imgHtml +
+			( excerpt ? '<div class="bwg-ai-ad-copy">' + excerpt + '</div>' : '' ) +
+			metaLine +
+			( flags.length ? complianceMiniFlags( flags ) : '' ) +
+			'<div class="bwg-ai-ad-actions">' +
+				'<button class="bwg-ai-btn bwg-ai-btn-confirm-ad">✓ This is ours</button>' +
+				'<button class="bwg-ai-btn bwg-ai-btn-flag-ad">✗ Don\'t recognize</button>' +
+			'</div>' +
+		'</div>';
+	}
+
+	function complianceMiniFlags( flags ) {
+		var shown = flags.slice( 0, 3 );
+		var html  = '<div class="bwg-ai-ad-flags">';
+		shown.forEach( function ( f ) {
+			html += '<div class="bwg-ai-ad-flag-row ' + esc( f.severity ) + '">' +
+				'<span class="bwg-ai-flag-dot"></span>' +
+				'<span>' + esc( f.description ) + '</span>' +
+				'</div>';
+		} );
+		if ( flags.length > 3 ) {
+			html += '<div style="font-size:11px;color:var(--ink3);margin-top:4px;">+' + ( flags.length - 3 ) + ' more flag' + ( flags.length - 3 === 1 ? '' : 's' ) + '</div>';
+		}
+		html += '</div>';
+		return html;
+	}
+
+	function toggleAdState( adId, confirmed ) {
+		if ( state.adsConfirmed[ adId ] === confirmed ) {
+			delete state.adsConfirmed[ adId ];
+			$( '[data-ad-id="' + adId + '"]' ).removeClass( 'confirmed flagged' );
+		} else {
+			state.adsConfirmed[ adId ] = confirmed;
+			applyCardState( adId, confirmed );
+		}
+		saveState();
+	}
+
+	function applyCardState( adId, confirmed ) {
+		var $card = $( '[data-ad-id="' + adId + '"]' );
+		if ( confirmed === true ) {
+			$card.addClass( 'confirmed' ).removeClass( 'flagged' );
+		} else if ( confirmed === false ) {
+			$card.addClass( 'flagged' ).removeClass( 'confirmed' );
+		}
+	}
+
+	function submitConfirmAds() {
+		clearNotice();
+		var confirmations = [];
+		state.ads.forEach( function ( ad ) {
+			var sel = state.adsConfirmed[ String( ad.id ) ];
+			if ( sel !== undefined ) {
+				confirmations.push( { ad_id: ad.id, confirmed: sel } );
+			}
+		} );
+
+		if ( ! confirmations.length ) {
+			showNotice( 'Please confirm or flag at least one ad before continuing.', 'info' );
+			return;
+		}
+
+		setLoading( '#bwg-ai-confirm-ads', true );
+
+		apiPost( '/confirm-ads', { session_id: state.sessionId, confirmations: confirmations } )
+			.done( function () {
+				saveState();
+				showNotice( 'Selections saved! Advancing to access request step…', 'success' );
+				setTimeout( renderStep5Stub, 1200 );
+			} )
+			.fail( function ( xhr ) {
+				setLoading( '#bwg-ai-confirm-ads', false );
+				showNotice( apiError( xhr, 'Could not save selections. Please try again.' ), 'error' );
+			} );
+	}
+
+	/* Add more accounts -------------------------------------------- */
+
+	function addAccountsFormHtml( suffix ) {
+		var id = function ( base ) { return 'bwg-ai-' + base + '-' + suffix; };
+		return '<div class="bwg-ai-add-accounts-form" id="' + id( 'acct-form' ) + '">' +
+			'<p style="font-size:14px;color:var(--ink2);margin-bottom:16px;font-weight:500;">Add account identifiers so we can search more specifically.</p>' +
+			'<div class="bwg-ai-acct-fields" id="' + id( 'acct-fields' ) + '">' +
+				accountFieldRowHtml( suffix, 0 ) +
+			'</div>' +
+			'<button class="bwg-ai-btn bwg-ai-btn-outline bwg-ai-btn-sm" id="' + id( 'acct-add' ) + '" style="margin-top:8px;">+ Add another</button>' +
+			'<div class="bwg-ai-btn-row" style="margin-top:16px;">' +
+				'<button class="bwg-ai-btn bwg-ai-btn-primary" id="' + id( 'acct-submit' ) + '">Search for More Ads</button>' +
+			'</div>' +
+		'</div>';
+	}
+
+	function accountFieldRowHtml( suffix, idx ) {
+		var rowId = 'bwg-ai-acct-row-' + suffix + '-' + idx;
+		return '<div class="bwg-ai-acct-row" id="' + rowId + '">' +
+			'<select class="bwg-ai-acct-type" id="bwg-ai-acct-type-' + suffix + '-' + idx + '">' +
+				'<option value="facebook_page">Facebook Page Name / URL</option>' +
+				'<option value="meta_ad_account">Meta Ad Account ID</option>' +
+				'<option value="google_ads_account">Google Ads Account ID</option>' +
+				'<option value="business_name">Business Name</option>' +
+			'</select>' +
+			'<input type="text" class="bwg-ai-acct-identifier" id="bwg-ai-acct-val-' + suffix + '-' + idx + '" placeholder="e.g. Sunrise Recovery Center">' +
+		'</div>';
+	}
+
+	function bindAddAccountsForm( suffix ) {
+		var id       = function ( base ) { return '#bwg-ai-' + base + '-' + suffix; };
+		var count    = [ 1 ];
+
+		$( id( 'acct-add' ) ).on( 'click', function () {
+			$( id( 'acct-fields' ) ).append( accountFieldRowHtml( suffix, count[0] ) );
+			count[0]++;
+		} );
+
+		$( id( 'acct-submit' ) ).on( 'click', function () {
+			var accounts = [];
+			for ( var i = 0; i < count[0]; i++ ) {
+				var type = $( '#bwg-ai-acct-type-' + suffix + '-' + i ).val();
+				var val  = $( '#bwg-ai-acct-val-' + suffix + '-' + i ).val().trim();
+				if ( val ) { accounts.push( { type: type, identifier: val } ); }
+			}
+
+			if ( ! accounts.length ) {
+				showNotice( 'Please enter at least one account identifier.', 'info' );
+				return;
+			}
+
+			setLoading( id( 'acct-submit' ), true );
+
+			apiPost( '/add-accounts', { session_id: state.sessionId, accounts: accounts } )
+				.done( function ( res ) {
+					var queued = res.queued || accounts.length;
+					showNotice( 'Searching ' + queued + ' additional account' + ( queued === 1 ? '' : 's' ) + '. We\'ll email you when more results are ready.', 'success' );
+					setLoading( id( 'acct-submit' ), false );
+					// Collapse panel if visible in panel mode.
+					$( '#bwg-ai-toggle-add-accounts' ).text( '+ Add More Ad Accounts' );
+					$( '#bwg-ai-add-accounts-panel' ).hide();
+				} )
+				.fail( function ( xhr ) {
+					setLoading( id( 'acct-submit' ), false );
+					showNotice( apiError( xhr, 'Could not submit. Please try again.' ), 'error' );
+				} );
+		} );
+	}
+
+	/* ------------------------------------------------------------------ */
+	/* Step 5 stub — Access funnel (M8)                                    */
+	/* ------------------------------------------------------------------ */
+	function renderStep5Stub() {
+		state.step = 5;
+		$steps.html(
+			header( 'Phase 3 of 5', 'Request Ad Account Access', 'To complete the deep audit, we need read-only access to your ad accounts. We\'ll send you step-by-step instructions.', 4 ) +
+			'<div class="bwg-ai-body">' +
+				'<div class="bwg-ai-phase-next">' +
+					'<div class="bwg-ai-phase-icon">🔑</div>' +
+					'<h3>Access Request Step Coming Soon</h3>' +
+					'<p>This phase is being released in the next update. Check your email — we\'ve sent you instructions for requesting ad account access on Meta and Google.</p>' +
+					( window.bwgAI && window.bwgAI.scheduleUrl
+						? '<a href="' + esc( window.bwgAI.scheduleUrl ) + '" class="bwg-ai-btn bwg-ai-btn-gold" target="_blank" rel="noopener" style="margin-top:8px;">Book a Strategy Call</a>'
+						: ''
+					) +
+				'</div>' +
+			'</div>'
+		);
 	}
 
 	/* ------------------------------------------------------------------ */
@@ -459,18 +800,16 @@
 				state.discovered  = res.discovered;
 				saveState();
 
-				var step = parseInt( res.step, 10 );
-				if ( step === 0 ) {
-					// Discovery not started yet — go to polling.
-					renderStep1();
-				} else if ( step < 1 ) {
-					renderStep1();
-				} else if ( step === 1 ) {
-					// Discovery data present — show review.
+				var dbStep = parseInt( res.step, 10 );
+				if ( dbStep < 1 ) {
+					// Discovery not confirmed yet — show review if data exists, else poll.
+					if ( res.discovered ) { renderStep2(); } else { renderStep1(); }
+				} else if ( dbStep === 1 ) {
+					// Discovery confirmed, waiting for EntityIQ or ads just arrived.
 					renderStep2();
 				} else {
-					// Step 3+ — show phase 2 loading screen.
-					renderStep3();
+					// DB step 2+ means ads are in the database — go straight to gallery.
+					renderStep4();
 				}
 			} )
 			.fail( function ( xhr ) {
@@ -482,10 +821,12 @@
 
 	function restoreFromLocal( saved ) {
 		state = $.extend( state, saved );
-		if ( state.step <= 0 )      { renderStep0(); }
+		if      ( state.step <= 0 ) { renderStep0(); }
 		else if ( state.step === 1 ) { renderStep1(); }
 		else if ( state.step === 2 ) { renderStep2(); }
-		else                         { renderStep3(); }
+		else if ( state.step === 3 ) { renderStep3(); }
+		else if ( state.step === 4 ) { renderStep4(); }
+		else                         { renderStep5Stub(); }
 	}
 
 	/* ------------------------------------------------------------------ */
@@ -493,10 +834,10 @@
 	/* ------------------------------------------------------------------ */
 	function apiPost( endpoint, data ) {
 		return $.ajax( {
-			url     : window.bwgAI.restUrl + endpoint,
-			method  : 'POST',
-			headers : { 'X-WP-Nonce': window.bwgAI.nonce },
-			data    : JSON.stringify( data ),
+			url         : window.bwgAI.restUrl + endpoint,
+			method      : 'POST',
+			headers     : { 'X-WP-Nonce': window.bwgAI.nonce },
+			data        : JSON.stringify( data ),
 			contentType : 'application/json',
 		} );
 	}
@@ -510,10 +851,7 @@
 	}
 
 	function apiError( xhr, fallback ) {
-		if ( xhr.responseJSON ) {
-			return xhr.responseJSON.message || fallback;
-		}
-		return fallback;
+		return ( xhr.responseJSON && xhr.responseJSON.message ) ? xhr.responseJSON.message : fallback;
 	}
 
 	/* ------------------------------------------------------------------ */
@@ -545,19 +883,15 @@
 
 	function cardHtml( title, rows ) {
 		var rowsHtml = rows.map( function ( r ) {
-			var val    = r.val || '';
-			var valHtml;
-			if ( r.editable ) {
-				valHtml = '<input class="bwg-ai-inline-input" id="edit-' + esc( r.editable ) + '" type="text" value="' + esc( val ) + '">';
-			} else {
-				valHtml = '<span class="bwg-ai-card-val' + ( val ? '' : ' empty' ) + '">' + esc( val || '—' ) + '</span>';
-			}
+			var val = r.val || '';
+			var valHtml = r.editable
+				? '<input class="bwg-ai-inline-input" id="edit-' + esc( r.editable ) + '" type="text" value="' + esc( val ) + '">'
+				: '<span class="bwg-ai-card-val' + ( val ? '' : ' empty' ) + '">' + esc( val || '—' ) + '</span>';
 			return '<div class="bwg-ai-card-row">' +
 				'<span class="bwg-ai-card-key">' + esc( r.key ) + '</span>' +
 				valHtml +
 				'</div>';
 		} ).join( '' );
-
 		return '<div class="bwg-ai-card">' +
 			'<div class="bwg-ai-card-label">' + esc( title ) + '</div>' +
 			rowsHtml +
@@ -578,9 +912,7 @@
 		$notice.text( msg ).removeClass( 'error success info' ).addClass( type ).show();
 	}
 
-	function clearNotice() {
-		$notice.hide().text( '' );
-	}
+	function clearNotice() { $notice.hide().text( '' ); }
 
 	function fieldError( fieldId, msg ) {
 		$( '#' + fieldId ).addClass( 'error' );
@@ -620,22 +952,14 @@
 	}
 
 	function clearPollTimer() {
-		if ( state.pollTimer ) {
-			clearTimeout( state.pollTimer );
-			state.pollTimer = null;
-		}
+		if ( state.pollTimer ) { clearTimeout( state.pollTimer ); state.pollTimer = null; }
 	}
 
 	/* ------------------------------------------------------------------ */
 	/* Helpers — Validation                                                 */
 	/* ------------------------------------------------------------------ */
-	function isValidUrl( url ) {
-		return /^https?:\/\/.+\..+/.test( url );
-	}
-
-	function isValidEmail( email ) {
-		return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test( email );
-	}
+	function isValidUrl( url )   { return /^https?:\/\/.+\..+/.test( url ); }
+	function isValidEmail( em )  { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test( em ); }
 
 	/* ------------------------------------------------------------------ */
 	/* Helpers — Misc                                                       */
@@ -643,11 +967,11 @@
 	function esc( str ) {
 		if ( str === null || str === undefined ) { return ''; }
 		return String( str )
-			.replace( /&/g, '&amp;' )
-			.replace( /</g, '&lt;' )
-			.replace( />/g, '&gt;' )
-			.replace( /"/g, '&quot;' )
-			.replace( /'/g, '&#x27;' );
+			.replace( /&/g,  '&amp;'  )
+			.replace( /</g,  '&lt;'   )
+			.replace( />/g,  '&gt;'   )
+			.replace( /"/g,  '&quot;' )
+			.replace( /'/g,  '&#x27;' );
 	}
 
 	function copyToClipboard( text ) {
@@ -663,9 +987,7 @@
 		}
 	}
 
-	function getUserEmail() {
-		return $( '#email' ).val() || '';
-	}
+	function getUserEmail() { return $( '#email' ).val() || ''; }
 
 	/* ------------------------------------------------------------------ */
 	/* localStorage persistence                                             */
@@ -673,15 +995,17 @@
 	function saveState() {
 		try {
 			localStorage.setItem( STORAGE_KEY, JSON.stringify( {
-				sessionId   : state.sessionId,
-				accessCode  : state.accessCode,
-				resumeToken : state.resumeToken,
-				websiteUrl  : state.websiteUrl,
-				step        : state.step,
-				discovered  : state.discovered,
-				flags       : state.flags,
+				sessionId    : state.sessionId,
+				accessCode   : state.accessCode,
+				resumeToken  : state.resumeToken,
+				websiteUrl   : state.websiteUrl,
+				step         : state.step,
+				discovered   : state.discovered,
+				flags        : state.flags,
+				ads          : state.ads,
+				adsConfirmed : state.adsConfirmed,
 			} ) );
-		} catch ( e ) { /* storage full or private mode */ }
+		} catch ( e ) { /* storage full or private mode — silently ignore */ }
 	}
 
 	function loadState() {
