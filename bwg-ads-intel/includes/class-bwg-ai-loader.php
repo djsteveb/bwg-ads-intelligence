@@ -56,7 +56,8 @@ class BWG_AI_Loader {
 		$this->add_action( 'bwg_ai_poll_entityiq', [ $ad_surface, 'poll' ] );
 
 		$email = new BWG_AI_Email();
-		$this->add_action( 'bwg_ai_send_access_followup', [ $email, 'send_followups' ] );
+		$this->add_action( 'bwg_ai_session_created',       [ $email, 'send_save_spot' ] );
+		$this->add_action( 'bwg_ai_send_access_followup',  [ $email, 'send_followups' ] );
 
 		// Daily maintenance registered inside Admin to keep it co-located with its handler.
 		// The cron is scheduled in Activator and handled by BWG_AI_Admin::daily_maintenance().

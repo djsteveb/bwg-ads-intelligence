@@ -169,6 +169,9 @@ class BWG_AI_Rest {
 			return $session;
 		}
 
+		// Fire save-spot email so the user has their access code and resume link.
+		do_action( 'bwg_ai_session_created', $session );
+
 		// Schedule Phase 1 discovery cron to run in 5 seconds.
 		wp_schedule_single_event( time() + 5, 'bwg_ai_run_discovery', [ $session->id ] );
 
