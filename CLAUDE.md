@@ -105,9 +105,9 @@ git push -u origin claude/implement-email-layer-U9k6B
 
 ## Build Status
 
-**Last completed milestone:** M8 — Phase 5 Access request funnel (platform cards, request-access endpoint, CSV upload parsers, Step 5 UI + CSS)
+**Last completed milestone:** M9 — Executive report (report class, HTML template, email-report wire-up)
 
-**Next milestone to build:** M9 — Executive report
+**Next milestone to build:** M10 — Admin panel
 
 **Milestones:**
 - [x] Planning — docs written, todos set
@@ -120,7 +120,7 @@ git push -u origin claude/implement-email-layer-U9k6B
 - [x] M6 — Phase 3 Text compliance engine
 - [x] M7 — Phase 4 Screenshot gallery UI
 - [x] M8 — Phase 5 Access request funnel
-- [ ] M9 — Executive report
+- [x] M9 — Executive report
 - [ ] M10 — Admin panel
 - [ ] Security review
 
