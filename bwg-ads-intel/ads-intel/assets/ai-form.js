@@ -101,6 +101,7 @@
 				'</form>' +
 				'<div id="bwg-ai-resume-form" style="display:none;margin-top:16px;">' +
 					field( 'access_code_input', 'Access Code', 'text', 'e.g. AB3XY7', 'Enter the 6-character code from your confirmation email.' ) +
+					( captchaSiteKey ? '<div id="bwg-ai-resume-turnstile" class="cf-turnstile" data-sitekey="' + esc( captchaSiteKey ) + '" data-theme="light" style="margin-top:12px;"></div>' : '' ) +
 					'<div class="bwg-ai-btn-row">' +
 						'<button class="bwg-ai-btn bwg-ai-btn-outline" id="bwg-ai-resume-btn">Resume Session</button>' +
 					'</div>' +
@@ -120,7 +121,11 @@
 		$( '#bwg-ai-resume-btn' ).on( 'click', function () {
 			var code = $( '#access_code_input' ).val().trim().toUpperCase();
 			if ( ! code ) { return; }
-			doResume( '', code );
+			var resumeCaptchaToken = '';
+			if ( window.turnstile ) {
+				resumeCaptchaToken = window.turnstile.getResponse( '#bwg-ai-resume-turnstile' ) || '';
+			}
+			doResume( '', code, resumeCaptchaToken );
 		} );
 
 		$( '#bwg-ai-form-0' ).on( 'submit', function ( e ) {
@@ -974,7 +979,7 @@
 		$.ajax( {
 			url         : window.bwgAI.restUrl + '/upload-export',
 			method      : 'POST',
-			headers     : { 'X-WP-Nonce': window.bwgAI.nonce },
+			headers     : apiHeaders(),
 			data        : formData,
 			processData : false,
 			contentType : false,
@@ -1072,11 +1077,11 @@
 	/* ------------------------------------------------------------------ */
 	/* Resume flow                                                          */
 	/* ------------------------------------------------------------------ */
-	function doResume( token, code ) {
+	function doResume( token, code, captchaToken ) {
 		showNotice( 'Resuming your session…', 'info' );
 		$steps.html( '<div style="padding:40px;text-align:center;"><div class="bwg-ai-spinner dark"></div></div>' );
 
-		apiPost( '/resume', { resume_token: token, access_code: code } )
+		apiPost( '/resume', { resume_token: token, access_code: code, captcha_token: captchaToken || '' } )
 			.done( function ( res ) {
 				clearNotice();
 				state.sessionId   = res.session_id;
@@ -1121,11 +1126,17 @@
 	/* ------------------------------------------------------------------ */
 	/* Helpers — API                                                        */
 	/* ------------------------------------------------------------------ */
+	function apiHeaders() {
+		var h = { 'X-WP-Nonce': window.bwgAI.nonce };
+		if ( state.resumeToken ) { h['X-BWG-Session-Token'] = state.resumeToken; }
+		return h;
+	}
+
 	function apiPost( endpoint, data ) {
 		return $.ajax( {
 			url         : window.bwgAI.restUrl + endpoint,
 			method      : 'POST',
-			headers     : { 'X-WP-Nonce': window.bwgAI.nonce },
+			headers     : apiHeaders(),
 			data        : JSON.stringify( data ),
 			contentType : 'application/json',
 		} );
@@ -1135,7 +1146,7 @@
 		return $.ajax( {
 			url     : window.bwgAI.restUrl + endpoint,
 			method  : 'GET',
-			headers : { 'X-WP-Nonce': window.bwgAI.nonce },
+			headers : apiHeaders(),
 		} );
 	}
 

@@ -193,7 +193,7 @@ class BWG_AI_Rest {
 	 * GET /discovery-status/{id}
 	 */
 	public function discovery_status( WP_REST_Request $request ) {
-		$session = $this->get_session_or_error( $request->get_param( 'id' ) );
+		$session = $this->get_session_or_error( $request->get_param( 'id' ), $request );
 		if ( is_wp_error( $session ) ) {
 			return $session;
 		}
@@ -224,7 +224,7 @@ class BWG_AI_Rest {
 	 */
 	public function confirm_discovery( WP_REST_Request $request ) {
 		$session_id = absint( $request->get_param( 'session_id' ) );
-		$session    = $this->get_session_or_error( $session_id );
+		$session    = $this->get_session_or_error( $session_id, $request );
 		if ( is_wp_error( $session ) ) {
 			return $session;
 		}
@@ -264,7 +264,7 @@ class BWG_AI_Rest {
 	 * GET /ad-surface-status/{id}
 	 */
 	public function ad_surface_status( WP_REST_Request $request ) {
-		$session = $this->get_session_or_error( $request->get_param( 'id' ) );
+		$session = $this->get_session_or_error( $request->get_param( 'id' ), $request );
 		if ( is_wp_error( $session ) ) {
 			return $session;
 		}
@@ -290,7 +290,7 @@ class BWG_AI_Rest {
 	 * GET /ads/{id}
 	 */
 	public function get_ads( WP_REST_Request $request ) {
-		$session = $this->get_session_or_error( $request->get_param( 'id' ) );
+		$session = $this->get_session_or_error( $request->get_param( 'id' ), $request );
 		if ( is_wp_error( $session ) ) {
 			return $session;
 		}
@@ -320,7 +320,7 @@ class BWG_AI_Rest {
 	 */
 	public function confirm_ads( WP_REST_Request $request ) {
 		$session_id = absint( $request->get_param( 'session_id' ) );
-		$session    = $this->get_session_or_error( $session_id );
+		$session    = $this->get_session_or_error( $session_id, $request );
 		if ( is_wp_error( $session ) ) {
 			return $session;
 		}
@@ -357,7 +357,7 @@ class BWG_AI_Rest {
 	 */
 	public function add_accounts( WP_REST_Request $request ) {
 		$session_id = absint( $request->get_param( 'session_id' ) );
-		$session    = $this->get_session_or_error( $session_id );
+		$session    = $this->get_session_or_error( $session_id, $request );
 		if ( is_wp_error( $session ) ) {
 			return $session;
 		}
@@ -389,16 +389,17 @@ class BWG_AI_Rest {
 	 */
 	public function access_status( WP_REST_Request $request ) {
 		$session_id = absint( $request->get_param( 'session_id' ) );
-		$session    = $this->get_session_or_error( $session_id );
+		$session    = $this->get_session_or_error( $session_id, $request );
 		if ( is_wp_error( $session ) ) {
 			return $session;
 		}
 
-		$platform = sanitize_text_field( $request->get_param( 'platform' ) );
-		$status   = sanitize_text_field( $request->get_param( 'access_status' ) );
-		$allowed  = [ 'pending', 'granted', 'export' ];
+		$platform          = sanitize_text_field( $request->get_param( 'platform' ) );
+		$status            = sanitize_text_field( $request->get_param( 'access_status' ) );
+		$allowed_platforms = [ 'meta', 'google', 'linkedin', 'tiktok' ];
+		$allowed_statuses  = [ 'pending', 'granted', 'export' ];
 
-		if ( ! $platform || ! in_array( $status, $allowed, true ) ) {
+		if ( ! in_array( $platform, $allowed_platforms, true ) || ! in_array( $status, $allowed_statuses, true ) ) {
 			return $this->error( 'invalid_data', 'Invalid platform or access_status.', 400 );
 		}
 
@@ -425,7 +426,7 @@ class BWG_AI_Rest {
 	 */
 	public function request_access( WP_REST_Request $request ) {
 		$session_id = absint( $request->get_param( 'session_id' ) );
-		$session    = $this->get_session_or_error( $session_id );
+		$session    = $this->get_session_or_error( $session_id, $request );
 		if ( is_wp_error( $session ) ) {
 			return $session;
 		}
@@ -475,7 +476,7 @@ class BWG_AI_Rest {
 	 */
 	public function upload_export( WP_REST_Request $request ) {
 		$session_id = absint( $request->get_param( 'session_id' ) );
-		$session    = $this->get_session_or_error( $session_id );
+		$session    = $this->get_session_or_error( $session_id, $request );
 		if ( is_wp_error( $session ) ) {
 			return $session;
 		}
@@ -566,18 +567,17 @@ class BWG_AI_Rest {
 		// Browser request — render HTML template.
 		$accept = $request->get_header( 'Accept' ) ?? '';
 		if ( strpos( $accept, 'text/html' ) !== false ) {
-			// Extract all report_data keys into local scope for the template.
-			extract( $report_data, EXTR_SKIP );
-			// Ensure required variables have safe defaults.
-			$business_name     = isset( $business_name )     ? $business_name     : '';
-			$website_url       = isset( $website_url )       ? $website_url       : '';
-			$risk_score        = isset( $risk_score )        ? (int) $risk_score  : 0;
-			$wasted_spend      = isset( $wasted_spend )      ? $wasted_spend      : null;
-			$top_actions       = isset( $top_actions )       ? $top_actions       : [];
-			$platform_snapshot = isset( $platform_snapshot ) ? $platform_snapshot : [];
-			$whats_working     = isset( $whats_working )     ? $whats_working     : [];
-			$flag_counts       = isset( $flag_counts )       ? $flag_counts       : [ 'high' => 0, 'medium' => 0, 'low' => 0 ];
-			$total_ads         = isset( $total_ads )         ? (int) $total_ads   : 0;
+			// Explicitly assign template variables from stored JSON (no extract() — avoids injecting
+			// unexpected variables if stored JSON is ever tampered with).
+			$business_name     = isset( $report_data['business_name'] )     ? (string) $report_data['business_name']     : '';
+			$website_url       = isset( $report_data['website_url'] )       ? (string) $report_data['website_url']       : '';
+			$risk_score        = isset( $report_data['risk_score'] )        ? (int)    $report_data['risk_score']        : 0;
+			$wasted_spend      = isset( $report_data['wasted_spend'] )      ? $report_data['wasted_spend']               : null;
+			$top_actions       = isset( $report_data['top_actions'] )       ? (array)  $report_data['top_actions']       : [];
+			$platform_snapshot = isset( $report_data['platform_snapshot'] ) ? (array)  $report_data['platform_snapshot'] : [];
+			$whats_working     = isset( $report_data['whats_working'] )     ? (array)  $report_data['whats_working']     : [];
+			$flag_counts       = isset( $report_data['flag_counts'] )       ? (array)  $report_data['flag_counts']       : [ 'high' => 0, 'medium' => 0, 'low' => 0 ];
+			$total_ads         = isset( $report_data['total_ads'] )         ? (int)    $report_data['total_ads']         : 0;
 			$generated_at      = $report->generated_at;
 			$report_token      = $token;
 
@@ -608,7 +608,7 @@ class BWG_AI_Rest {
 	 */
 	public function email_report( WP_REST_Request $request ) {
 		$session_id = absint( $request->get_param( 'session_id' ) );
-		$session    = $this->get_session_or_error( $session_id );
+		$session    = $this->get_session_or_error( $session_id, $request );
 		if ( is_wp_error( $session ) ) {
 			return $session;
 		}
@@ -646,13 +646,37 @@ class BWG_AI_Rest {
 			return $this->error( 'rate_limited', 'Too many attempts. Please wait before trying again.', 429, [ 'retry_after' => $retry ] );
 		}
 
+		$access_code  = $request->get_param( 'access_code' );
+		$resume_token = $request->get_param( 'resume_token' );
+
+		// Require captcha for access-code resumes (brute-force vector).
+		// Token resumes (64-char hex, 256-bit entropy) don't need it.
+		if ( ! empty( $access_code ) && empty( $resume_token ) ) {
+			$captcha = BWG_AI_Security::verify_captcha( $request->get_param( 'captcha_token' ), $ip );
+			if ( is_wp_error( $captcha ) ) {
+				return $captcha;
+			}
+		}
+
+		// Access-code lockout: block after 5 wrong guesses per IP per hour.
+		$lockout_key = 'access_code_fail:' . $ip;
+		if ( ! empty( $access_code ) && empty( $resume_token ) ) {
+			if ( BWG_AI_Rate_Limiter::is_locked( $lockout_key, 5, 3600 ) ) {
+				return $this->error( 'access_code_locked', 'Too many incorrect access code attempts. Please try again later.', 429 );
+			}
+		}
+
 		$session = BWG_AI_Security::resolve_resume(
-			$request->get_param( 'access_code' ),
-			$request->get_param( 'resume_token' )
+			$access_code,
+			$resume_token
 		);
 
 		if ( is_wp_error( $session ) ) {
 			BWG_AI_Session::log( null, 'resume_failed', 'Failed resume attempt from ' . $ip );
+			// Increment failure counter only for access-code attempts (token has 256-bit entropy).
+			if ( ! empty( $access_code ) && empty( $resume_token ) ) {
+				BWG_AI_Rate_Limiter::increment( $lockout_key, 3600 );
+			}
 			return $session;
 		}
 
@@ -898,12 +922,24 @@ class BWG_AI_Rest {
 
 	/**
 	 * Get a session by ID or return a WP_Error if not found.
+	 *
+	 * When $request is supplied the caller's session ownership is verified via
+	 * the X-BWG-Session-Token header (must equal the session's resume_token).
+	 * WordPress admins bypass this check so the admin panel works without tokens.
 	 */
-	private function get_session_or_error( $id ) {
+	private function get_session_or_error( $id, WP_REST_Request $request = null ) {
 		$session = BWG_AI_Session::get( absint( $id ) );
 		if ( ! $session ) {
 			return $this->error( 'session_not_found', 'Session not found.', 404 );
 		}
+
+		if ( $request && ! current_user_can( 'manage_options' ) ) {
+			$token = $request->get_header( 'X-BWG-Session-Token' );
+			if ( ! $token || ! hash_equals( $session->resume_token, sanitize_text_field( $token ) ) ) {
+				return $this->error( 'session_access_denied', 'Not authorised to access this session.', 403 );
+			}
+		}
+
 		return $session;
 	}
 

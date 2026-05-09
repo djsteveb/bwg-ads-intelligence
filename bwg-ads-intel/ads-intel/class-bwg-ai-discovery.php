@@ -47,6 +47,10 @@ class BWG_AI_Discovery {
 	 * @param int $session_id
 	 */
 	public function run( $session_id ) {
+		if ( ! wp_doing_cron() ) {
+			return;
+		}
+
 		$this->session = BWG_AI_Session::get( absint( $session_id ) );
 		if ( ! $this->session || $this->session->status !== 'active' ) {
 			return;
