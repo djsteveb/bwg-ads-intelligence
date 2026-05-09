@@ -105,9 +105,9 @@ git push -u origin claude/read-files-plan-build-yho2p
 
 ## Build Status
 
-**Last completed milestone:** M5 — Phase 2 EntityIQ Ad Surface integration (queue_job, poll, webhook handler, ad save, compliance hook)
+**Last completed milestone:** M6 — Phase 3 Text compliance engine (12 rules across HIPAA/policy/best-practice tiers)
 
-**Next milestone to build:** M6 — Phase 3 Text compliance engine
+**Next milestone to build:** M7 — Phase 4 Screenshot gallery UI
 
 **Milestones:**
 - [x] Planning — docs written, todos set
@@ -117,7 +117,8 @@ git push -u origin claude/read-files-plan-build-yho2p
 - [x] M3 — Front-end form shortcode
 - [x] M4 — Email layer
 - [x] M5 — Phase 2 EntityIQ integration
-- [ ] M6 — Phase 3 Text compliance engine
+- [x] M6 — Phase 3 Text compliance engine
+- [ ] M7 — Phase 4 Screenshot gallery UI
 - [ ] M6 — Phase 3 Text compliance engine
 - [ ] M7 — Phase 4 Screenshot gallery UI
 - [ ] M8 — Phase 5 Access request funnel
