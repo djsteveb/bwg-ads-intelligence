@@ -105,16 +105,16 @@ git push -u origin claude/read-files-plan-build-yho2p
 
 ## Build Status
 
-**Last completed milestone:** M2 — Phase 1 Discovery Engine (9 sub-tasks, incremental progress)
+**Last completed milestone:** M3 — Front-end form shortcode (step machine, polling, review, resume)
 
-**Next milestone to build:** M3 — Front-end form shortcode
+**Next milestone to build:** M4 — Email layer
 
 **Milestones:**
 - [x] Planning — docs written, todos set
 - [x] M0 — Plugin scaffold (bootstrap, DB tables, uninstall)
 - [x] M1 — Session layer + REST skeleton
 - [x] M2 — Phase 1 Discovery Engine
-- [ ] M3 — Front-end form shortcode
+- [x] M3 — Front-end form shortcode
 - [ ] M4 — Email layer
 - [ ] M5 — Phase 2 EntityIQ integration
 - [ ] M6 — Phase 3 Text compliance engine
