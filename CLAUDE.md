@@ -105,9 +105,9 @@ git push -u origin claude/read-files-plan-build-yho2p
 
 ## Build Status
 
-**Last completed milestone:** M4 — Email layer (send dispatcher, drip cron, all 7 email methods + HTML templates)
+**Last completed milestone:** M5 — Phase 2 EntityIQ Ad Surface integration (queue_job, poll, webhook handler, ad save, compliance hook)
 
-**Next milestone to build:** M5 — Phase 2 EntityIQ integration
+**Next milestone to build:** M6 — Phase 3 Text compliance engine
 
 **Milestones:**
 - [x] Planning — docs written, todos set
@@ -116,7 +116,8 @@ git push -u origin claude/read-files-plan-build-yho2p
 - [x] M2 — Phase 1 Discovery Engine
 - [x] M3 — Front-end form shortcode
 - [x] M4 — Email layer
-- [ ] M5 — Phase 2 EntityIQ integration
+- [x] M5 — Phase 2 EntityIQ integration
+- [ ] M6 — Phase 3 Text compliance engine
 - [ ] M6 — Phase 3 Text compliance engine
 - [ ] M7 — Phase 4 Screenshot gallery UI
 - [ ] M8 — Phase 5 Access request funnel
