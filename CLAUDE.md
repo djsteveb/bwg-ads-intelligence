@@ -206,6 +206,18 @@ Auth: `X-WP-Nonce` on all except `/resume` (access code auth) and `/report/{toke
 
 ---
 
+## BWG Suite Integration (Not Yet Joined)
+
+This plugin does **not** currently have a `bwg-suite-bridge.php` file, so it doesn't participate in the cross-plugin shared enrichment-data cache (`wp_bwg_data_cache`) that `bwg-auto-mailing-systems`, `bwg-comp-pl-one`, `entityiq`, `pagespeedtwo-sitescout`, and `webring-plus-v7` already share.
+
+**Known duplicate credentials** (each independently configured here, with an identical-purpose credential also stored in at least one sibling plugin — no automatic sharing today):
+- `bwg_ai_google_places_key` — also in `pagespeedtwo-sitescout` (`bwg_sa_google_places_key`), `entityiq` (`google_places_api_key`), and `webring-plus-v7`'s own settings.
+- `bwg_ai_captcha_secret_key` (Cloudflare Turnstile) — also in `bwg-domain-hosting-control-record` (`dhcr_captcha_secret_key`) and `pagespeedtwo-sitescout`'s CPA Assessment module.
+
+**Candidate for future bridge integration:** `ads-intel/class-bwg-ai-discovery.php`'s Google Places lookups are a plausible fit for the shared cache (write `places_basic`/`places_full` keyed by domain, same pattern just added to `webring-plus-v7`), since this plugin's discovery flow looks up real businesses by domain rather than doing free-text search. Not implemented in this pass — flagging as a scoped follow-up. See `1-map-synposises` (CAPABILITIES.md, "Duplicate credentials across the suite") for the full cross-repo matrix.
+
+---
+
 ## MVP Scope vs. Phase 2
 
 **Build now (MVP):**
