@@ -51,6 +51,7 @@ spl_autoload_register( function ( $class ) {
 // by plain function calls (e.g. settings sanitize callbacks) that may run
 // before the BWG_AI_Security class is otherwise referenced.
 require_once BWG_AI_DIR . 'includes/class-bwg-ai-security.php';
+require_once BWG_AI_DIR . 'includes/bwg-suite-bridge.php';
 
 register_activation_hook( __FILE__, [ 'BWG_AI_Activator', 'activate' ] );
 register_deactivation_hook( __FILE__, [ 'BWG_AI_Activator', 'deactivate' ] );

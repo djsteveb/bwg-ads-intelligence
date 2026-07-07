@@ -182,14 +182,59 @@ function bwg_ai_settings_api() {
 	?>
 	<form method="post" action="options.php">
 		<?php settings_fields( 'bwg_ai_api' ); ?>
+		<?php
+		$bwg_ai_places_own       = bwg_ai_decrypt_secret( (string) get_option( 'bwg_ai_google_places_key', '' ) );
+		$bwg_ai_places_own_set   = '' !== $bwg_ai_places_own;
+		$bwg_ai_places_shared    = ( ! $bwg_ai_places_own_set && function_exists( 'bwg_suite_find_shared_credential' ) )
+			? bwg_suite_find_shared_credential( 'google_places_api_key', 'Ads Intelligence' )
+			: null;
+		$bwg_ai_places_sources   = ( ! $bwg_ai_places_own_set && ! $bwg_ai_places_shared && function_exists( 'bwg_suite_credential_source_statuses' ) )
+			? bwg_suite_credential_source_statuses( 'google_places_api_key', 'Ads Intelligence' )
+			: [];
+		?>
 		<table class="form-table">
 			<tr>
 				<th scope="row"><label for="bwg_ai_google_places_key">Google Places API Key</label></th>
 				<td>
 					<input type="password" id="bwg_ai_google_places_key" name="bwg_ai_google_places_key"
-					       value="<?php echo esc_attr( bwg_ai_decrypt_secret( get_option( 'bwg_ai_google_places_key', '' ) ) ); ?>"
-					       class="regular-text" autocomplete="new-password">
+					       value="<?php echo esc_attr( $bwg_ai_places_own ); ?>"
+					       class="regular-text" autocomplete="new-password"
+					       <?php disabled( (bool) $bwg_ai_places_shared ); ?>
+					       placeholder="<?php echo $bwg_ai_places_shared ? esc_attr( sprintf( 'Using shared key from %s', $bwg_ai_places_shared['source_label'] ) ) : ''; ?>">
+					<?php if ( $bwg_ai_places_shared ) : ?>
+						<label style="display:block;margin-top:4px;font-size:12px;">
+							<input type="checkbox" id="bwg-ai-places-override">
+							Use a different key instead of the one shared from <?php echo esc_html( $bwg_ai_places_shared['source_label'] ); ?>
+						</label>
+						<script>
+						(function(){
+							var cb = document.getElementById('bwg-ai-places-override');
+							var f  = document.getElementById('bwg_ai_google_places_key');
+							if (cb && f) {
+								cb.addEventListener('change', function(){
+									f.disabled = !cb.checked;
+									if (cb.checked) { f.focus(); }
+								});
+							}
+						})();
+						</script>
+					<?php endif; ?>
 					<p class="description">Used for GBP lookup in Phase 1 Discovery. Restrict to Places API only.</p>
+					<?php if ( $bwg_ai_places_shared ) : ?>
+						<p class="description" style="color:#2271b1;">No key entered here — automatically reusing the Google Places key already configured in a sibling BWG plugin on this site.</p>
+					<?php elseif ( ! empty( $bwg_ai_places_sources ) ) : ?>
+						<p class="description" style="color:#787c82;">
+							This could be shared automatically instead of entering it here:
+							<?php foreach ( $bwg_ai_places_sources as $bwg_ai_places_source ) : ?>
+								<br>&nbsp;&nbsp;•
+								<?php if ( $bwg_ai_places_source['installed'] ) : ?>
+									<?php echo esc_html( $bwg_ai_places_source['label'] ); ?> is active on this site — configure a Google Places key there and it will be used here too.
+								<?php else : ?>
+									<span style="opacity:.6;"><?php echo esc_html( $bwg_ai_places_source['label'] ); ?> (not installed) — would share its key here automatically if installed and configured.</span>
+								<?php endif; ?>
+							<?php endforeach; ?>
+						</p>
+					<?php endif; ?>
 				</td>
 			</tr>
 			<tr>

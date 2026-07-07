@@ -330,3 +330,22 @@ function bwg_ai_decrypt_secret( $stored ) {
 
 	return false !== $plain ? $plain : $stored;
 }
+
+/**
+ * Resolve the Google Places API key: this plugin's own key if configured,
+ * otherwise a sibling BWG suite plugin's key if one is available (see
+ * includes/bwg-suite-bridge.php). Never writes anything.
+ */
+function bwg_ai_get_google_places_key(): string {
+	$own = bwg_ai_decrypt_secret( (string) get_option( 'bwg_ai_google_places_key', '' ) );
+	if ( '' !== $own ) {
+		return $own;
+	}
+	if ( function_exists( 'bwg_suite_find_shared_credential' ) ) {
+		$shared = bwg_suite_find_shared_credential( 'google_places_api_key', 'Ads Intelligence' );
+		if ( null !== $shared ) {
+			return $shared['value'];
+		}
+	}
+	return '';
+}
