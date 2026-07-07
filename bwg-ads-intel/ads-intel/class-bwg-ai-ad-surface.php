@@ -287,7 +287,7 @@ class BWG_AI_Ad_Surface {
 		}
 
 		$timestamp = (string) time();
-		$secret    = get_option( 'bwg_ai_entityiq_secret', '' );
+		$secret    = bwg_ai_decrypt_secret( get_option( 'bwg_ai_entityiq_secret', '' ) );
 		$sig       = 'sha256=' . hash_hmac( 'sha256', $body_json . $timestamp, $secret );
 
 		return wp_remote_post(
@@ -317,7 +317,7 @@ class BWG_AI_Ad_Surface {
 		}
 
 		$timestamp = (string) time();
-		$secret    = get_option( 'bwg_ai_entityiq_secret', '' );
+		$secret    = bwg_ai_decrypt_secret( get_option( 'bwg_ai_entityiq_secret', '' ) );
 		$sig       = 'sha256=' . hash_hmac( 'sha256', '' . $timestamp, $secret );
 
 		return wp_remote_get(

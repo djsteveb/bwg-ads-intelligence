@@ -63,7 +63,7 @@ function bwg_ai_settings_general() {
 				<th scope="row"><label for="bwg_ai_entityiq_secret">EntityIQ Shared Secret</label></th>
 				<td>
 					<input type="password" id="bwg_ai_entityiq_secret" name="bwg_ai_entityiq_secret"
-					       value="<?php echo esc_attr( get_option( 'bwg_ai_entityiq_secret', '' ) ); ?>"
+					       value="<?php echo esc_attr( bwg_ai_decrypt_secret( get_option( 'bwg_ai_entityiq_secret', '' ) ) ); ?>"
 					       class="regular-text" autocomplete="new-password">
 					<p class="description">HMAC-SHA256 secret. Must match <code>BWG_WEBHOOK_SECRET</code> in the EntityIQ <code>.env</code>.</p>
 				</td>
@@ -121,7 +121,7 @@ function bwg_ai_settings_email() {
 				<th scope="row"><label for="bwg_ai_sendgrid_api_key">SendGrid API Key</label></th>
 				<td>
 					<input type="password" id="bwg_ai_sendgrid_api_key" name="bwg_ai_sendgrid_api_key"
-					       value="<?php echo esc_attr( get_option( 'bwg_ai_sendgrid_api_key', '' ) ); ?>"
+					       value="<?php echo esc_attr( bwg_ai_decrypt_secret( get_option( 'bwg_ai_sendgrid_api_key', '' ) ) ); ?>"
 					       class="regular-text" autocomplete="new-password">
 				</td>
 			</tr>
@@ -129,7 +129,7 @@ function bwg_ai_settings_email() {
 				<th scope="row"><label for="bwg_ai_postmark_api_key">Postmark API Key</label></th>
 				<td>
 					<input type="password" id="bwg_ai_postmark_api_key" name="bwg_ai_postmark_api_key"
-					       value="<?php echo esc_attr( get_option( 'bwg_ai_postmark_api_key', '' ) ); ?>"
+					       value="<?php echo esc_attr( bwg_ai_decrypt_secret( get_option( 'bwg_ai_postmark_api_key', '' ) ) ); ?>"
 					       class="regular-text" autocomplete="new-password">
 				</td>
 			</tr>
@@ -187,7 +187,7 @@ function bwg_ai_settings_api() {
 				<th scope="row"><label for="bwg_ai_google_places_key">Google Places API Key</label></th>
 				<td>
 					<input type="password" id="bwg_ai_google_places_key" name="bwg_ai_google_places_key"
-					       value="<?php echo esc_attr( get_option( 'bwg_ai_google_places_key', '' ) ); ?>"
+					       value="<?php echo esc_attr( bwg_ai_decrypt_secret( get_option( 'bwg_ai_google_places_key', '' ) ) ); ?>"
 					       class="regular-text" autocomplete="new-password">
 					<p class="description">Used for GBP lookup in Phase 1 Discovery. Restrict to Places API only.</p>
 				</td>
@@ -204,7 +204,7 @@ function bwg_ai_settings_api() {
 				<th scope="row"><label for="bwg_ai_captcha_secret_key">Cloudflare Turnstile Secret Key</label></th>
 				<td>
 					<input type="password" id="bwg_ai_captcha_secret_key" name="bwg_ai_captcha_secret_key"
-					       value="<?php echo esc_attr( get_option( 'bwg_ai_captcha_secret_key', '' ) ); ?>"
+					       value="<?php echo esc_attr( bwg_ai_decrypt_secret( get_option( 'bwg_ai_captcha_secret_key', '' ) ) ); ?>"
 					       class="regular-text" autocomplete="new-password">
 				</td>
 			</tr>

@@ -223,10 +223,10 @@ class BWG_AI_Discovery {
 	private function match_gbp( $nap ) {
 		if ( class_exists( 'BWG_CPA_Discovery' ) ) {
 			$d = new BWG_CPA_Discovery( $this->session->website_url );
-			return $d->match_gbp( get_option( 'bwg_ai_google_places_key', '' ) );
+			return $d->match_gbp( bwg_ai_decrypt_secret( get_option( 'bwg_ai_google_places_key', '' ) ) );
 		}
 
-		$api_key = get_option( 'bwg_ai_google_places_key', '' );
+		$api_key = bwg_ai_decrypt_secret( get_option( 'bwg_ai_google_places_key', '' ) );
 		$result  = [ 'place_id' => '', 'rating' => null, 'review_count' => null, 'category' => '' ];
 
 		if ( empty( $api_key ) ) {

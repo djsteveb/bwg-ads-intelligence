@@ -56,20 +56,20 @@ class BWG_AI_Admin {
 	public function register_settings() {
 		// General.
 		register_setting( 'bwg_ai_general', 'bwg_ai_entityiq_url',     [ 'sanitize_callback' => 'sanitize_url' ] );
-		register_setting( 'bwg_ai_general', 'bwg_ai_entityiq_secret',  [ 'sanitize_callback' => 'sanitize_text_field' ] );
+		register_setting( 'bwg_ai_general', 'bwg_ai_entityiq_secret',  [ 'sanitize_callback' => [ $this, 'sanitize_and_encrypt_secret' ] ] );
 		register_setting( 'bwg_ai_general', 'bwg_ai_booking_url',      [ 'sanitize_callback' => 'sanitize_url' ] );
 
 		// Email.
 		register_setting( 'bwg_ai_email', 'bwg_ai_email_provider',    [ 'sanitize_callback' => [ $this, 'sanitize_email_provider' ] ] );
 		register_setting( 'bwg_ai_email', 'bwg_ai_from_name',         [ 'sanitize_callback' => 'sanitize_text_field' ] );
 		register_setting( 'bwg_ai_email', 'bwg_ai_from_email',        [ 'sanitize_callback' => 'sanitize_email' ] );
-		register_setting( 'bwg_ai_email', 'bwg_ai_sendgrid_api_key',  [ 'sanitize_callback' => 'sanitize_text_field' ] );
-		register_setting( 'bwg_ai_email', 'bwg_ai_postmark_api_key',  [ 'sanitize_callback' => 'sanitize_text_field' ] );
+		register_setting( 'bwg_ai_email', 'bwg_ai_sendgrid_api_key',  [ 'sanitize_callback' => [ $this, 'sanitize_and_encrypt_secret' ] ] );
+		register_setting( 'bwg_ai_email', 'bwg_ai_postmark_api_key',  [ 'sanitize_callback' => [ $this, 'sanitize_and_encrypt_secret' ] ] );
 
 		// API Keys.
-		register_setting( 'bwg_ai_api', 'bwg_ai_google_places_key',   [ 'sanitize_callback' => 'sanitize_text_field' ] );
+		register_setting( 'bwg_ai_api', 'bwg_ai_google_places_key',   [ 'sanitize_callback' => [ $this, 'sanitize_and_encrypt_secret' ] ] );
 		register_setting( 'bwg_ai_api', 'bwg_ai_captcha_site_key',    [ 'sanitize_callback' => 'sanitize_text_field' ] );
-		register_setting( 'bwg_ai_api', 'bwg_ai_captcha_secret_key',  [ 'sanitize_callback' => 'sanitize_text_field' ] );
+		register_setting( 'bwg_ai_api', 'bwg_ai_captcha_secret_key',  [ 'sanitize_callback' => [ $this, 'sanitize_and_encrypt_secret' ] ] );
 
 		// Storage / Maintenance.
 		register_setting( 'bwg_ai_storage_settings', 'bwg_ai_storage_warning_gb',       [ 'sanitize_callback' => 'absint' ] );
@@ -392,7 +392,7 @@ class BWG_AI_Admin {
 			return null;
 		}
 
-		$secret = get_option( 'bwg_ai_entityiq_secret', '' );
+		$secret = bwg_ai_decrypt_secret( get_option( 'bwg_ai_entityiq_secret', '' ) );
 		$ts     = time();
 		$sig    = hash_hmac( 'sha256', "{$method}:{$path}:{$ts}", $secret );
 
@@ -434,5 +434,14 @@ class BWG_AI_Admin {
 	public function sanitize_email_provider( $value ) {
 		$allowed = [ 'wp_mail', 'sendgrid', 'postmark' ];
 		return in_array( $value, $allowed, true ) ? $value : 'wp_mail';
+	}
+
+	/**
+	 * Sanitize + encrypt a secret/API key field before it's stored in wp_options.
+	 * Used as the sanitize_callback for every secret option so it's never
+	 * persisted in plaintext.
+	 */
+	public function sanitize_and_encrypt_secret( $value ) {
+		return bwg_ai_encrypt_secret( sanitize_text_field( $value ) );
 	}
 }

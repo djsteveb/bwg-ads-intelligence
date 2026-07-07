@@ -118,7 +118,7 @@ class BWG_AI_Security {
 	 * @return true|WP_Error
 	 */
 	public static function verify_captcha( $token, $ip = '' ) {
-		$secret = get_option( 'bwg_ai_captcha_secret_key', '' );
+		$secret = bwg_ai_decrypt_secret( get_option( 'bwg_ai_captcha_secret_key', '' ) );
 
 		if ( empty( $secret ) ) {
 			// Fail closed: an unconfigured secret must not silently disable
@@ -178,7 +178,7 @@ class BWG_AI_Security {
 	 * @return true|WP_Error
 	 */
 	public static function verify_webhook_signature( WP_REST_Request $request ) {
-		$secret = get_option( 'bwg_ai_entityiq_secret', '' );
+		$secret = bwg_ai_decrypt_secret( get_option( 'bwg_ai_entityiq_secret', '' ) );
 
 		if ( empty( $secret ) ) {
 			return new WP_Error( 'webhook_not_configured', 'Webhook secret not configured.', [ 'status' => 503 ] );
@@ -253,4 +253,80 @@ class BWG_AI_Security {
 
 		return new WP_Error( 'session_not_found', 'Access code or resume token not found.', [ 'status' => 404 ] );
 	}
+}
+
+// -------------------------------------------------------------------------
+// Secret encryption at rest (AES-256-CBC, keyed from WordPress AUTH_KEY /
+// SECURE_AUTH_KEY). Matches the convention already established across the
+// other BWG suite plugins so API keys/secrets are never stored in plaintext
+// in wp_options.
+// -------------------------------------------------------------------------
+
+/**
+ * Derive the 32-byte raw encryption key used for secret-at-rest encryption.
+ *
+ * @return string
+ */
+function bwg_ai_secret_encryption_key() {
+	$auth_key        = defined( 'AUTH_KEY' ) ? AUTH_KEY : 'auth-key-fallback';
+	$secure_auth_key = defined( 'SECURE_AUTH_KEY' ) ? SECURE_AUTH_KEY : 'secure-auth-key-fallback';
+	return hash( 'sha256', $auth_key . $secure_auth_key, true );
+}
+
+/**
+ * Encrypts a secret (API key, shared secret, etc.) for storage in wp_options.
+ * Returns a base64-encoded "ciphertext::iv" string, or '' for empty input.
+ *
+ * @param string $plaintext
+ * @return string
+ */
+function bwg_ai_encrypt_secret( $plaintext ) {
+	$plaintext = (string) $plaintext;
+	if ( '' === $plaintext ) {
+		return '';
+	}
+
+	$key    = bwg_ai_secret_encryption_key();
+	$iv     = random_bytes( 16 );
+	$cipher = openssl_encrypt( $plaintext, 'AES-256-CBC', $key, OPENSSL_RAW_DATA, $iv );
+
+	if ( false === $cipher ) {
+		return '';
+	}
+
+	return base64_encode( $cipher . '::' . $iv );
+}
+
+/**
+ * Decrypts a secret previously stored with bwg_ai_encrypt_secret().
+ *
+ * Tolerates legacy plaintext values (from before encryption-at-rest was
+ * introduced) by falling back to returning the raw stored string whenever
+ * it doesn't decode/decrypt as one of our ciphertext blobs, so existing
+ * installs don't break on upgrade.
+ *
+ * @param string $stored
+ * @return string
+ */
+function bwg_ai_decrypt_secret( $stored ) {
+	$stored = (string) $stored;
+	if ( '' === $stored ) {
+		return '';
+	}
+
+	$decoded = base64_decode( $stored, true );
+	if ( false === $decoded ) {
+		return $stored;
+	}
+
+	$parts = explode( '::', $decoded, 2 );
+	if ( 2 !== count( $parts ) ) {
+		return $stored;
+	}
+
+	[ $cipher, $iv ] = $parts;
+	$key   = bwg_ai_secret_encryption_key();
+	$plain = openssl_decrypt( $cipher, 'AES-256-CBC', $key, OPENSSL_RAW_DATA, $iv );
+
+	return false !== $plain ? $plain : $stored;
 }

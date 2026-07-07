@@ -229,7 +229,7 @@ class BWG_AI_Email {
 	// -------------------------------------------------------------------------
 
 	private function send_via_sendgrid( $to, $subject, $html_body, $from_name, $from_email ) {
-		$api_key = get_option( 'bwg_ai_sendgrid_api_key', '' );
+		$api_key = bwg_ai_decrypt_secret( get_option( 'bwg_ai_sendgrid_api_key', '' ) );
 		if ( ! $api_key ) {
 			return false;
 		}
@@ -252,7 +252,7 @@ class BWG_AI_Email {
 	}
 
 	private function send_via_postmark( $to, $subject, $html_body, $from_name, $from_email ) {
-		$api_key = get_option( 'bwg_ai_postmark_api_key', '' );
+		$api_key = bwg_ai_decrypt_secret( get_option( 'bwg_ai_postmark_api_key', '' ) );
 		if ( ! $api_key ) {
 			return false;
 		}

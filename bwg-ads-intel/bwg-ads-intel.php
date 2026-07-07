@@ -46,6 +46,12 @@ spl_autoload_register( function ( $class ) {
 	}
 } );
 
+// Load unconditionally (not just via the class autoloader) since it also
+// defines the bwg_ai_encrypt_secret() / bwg_ai_decrypt_secret() helpers used
+// by plain function calls (e.g. settings sanitize callbacks) that may run
+// before the BWG_AI_Security class is otherwise referenced.
+require_once BWG_AI_DIR . 'includes/class-bwg-ai-security.php';
+
 register_activation_hook( __FILE__, [ 'BWG_AI_Activator', 'activate' ] );
 register_deactivation_hook( __FILE__, [ 'BWG_AI_Activator', 'deactivate' ] );
 
