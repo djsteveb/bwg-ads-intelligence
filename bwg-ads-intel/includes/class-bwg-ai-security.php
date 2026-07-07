@@ -112,7 +112,6 @@ class BWG_AI_Security {
 	/**
 	 * Verify a Cloudflare Turnstile token.
 	 * Returns true on success, WP_Error on failure.
-	 * If no secret key is configured, verification is skipped (dev environments).
 	 *
 	 * @param string $token   The cf-turnstile-response token from the client.
 	 * @param string $ip      Client IP for additional entropy.
@@ -122,9 +121,12 @@ class BWG_AI_Security {
 		$secret = get_option( 'bwg_ai_captcha_secret_key', '' );
 
 		if ( empty( $secret ) ) {
-			// Not configured — skip in dev. Log a notice.
-			BWG_AI_Session::log( null, 'captcha_skipped', 'Captcha secret key not configured.' );
-			return true;
+			// Fail closed: an unconfigured secret must not silently disable
+			// the captcha check, or every install that hasn't set up
+			// Turnstile yet would have no bot protection on this endpoint
+			// at all, with no indication anywhere that it isn't working.
+			BWG_AI_Session::log( null, 'captcha_misconfigured', 'Captcha secret key not configured; rejecting request.' );
+			return new WP_Error( 'captcha_misconfigured', 'Security check is not available right now. Please try again later.', [ 'status' => 503 ] );
 		}
 
 		if ( empty( $token ) ) {
