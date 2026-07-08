@@ -131,7 +131,7 @@ function bwg_suite_active_plugins(): array {
 	if ( class_exists( 'BWG_Compliance_Auditor' ) )
 		$active['compliance'] = [ 'label' => 'Compliance', 'provides' => [ 'compliance_score', 'security_headers', 'site_metadata' ], 'consumes' => [ 'psi_desktop', 'health_check' ] ];
 	if ( class_exists( 'BWG_PCE_DB' ) || defined( 'BWG_PCE_VERSION' ) )
-		$active['automail'] = [ 'label' => 'AutoMail', 'provides' => [ 'psi_mobile', 'psi_desktop', 'tech_stack', 'security_headers', 'domain_authority', 'yelp_reviews', 'screenshot_url', 'brightlocal_citations', 'dataforseo_local_pack', 'dataforseo_serp' ], 'consumes' => [ 'places_basic', 'health_check', 'webring_listing' ] ];
+		$active['automail'] = [ 'label' => 'AutoMail', 'provides' => [ 'psi_mobile', 'psi_desktop', 'tech_stack', 'security_headers', 'domain_authority', 'yelp_reviews', 'screenshot_url', 'brightlocal_citations', 'dataforseo_local_pack', 'dataforseo_serp', 'places_full' ], 'consumes' => [ 'places_basic', 'health_check', 'webring_listing' ] ];
 	if ( class_exists( 'WP_Webring_Pro' ) )
 		$active['webring'] = [ 'label' => 'Webring', 'provides' => [ 'places_basic', 'places_full', 'health_check', 'site_metadata', 'screenshot_url', 'social_presence', 'webring_listing' ], 'consumes' => [ 'psi_mobile', 'schema_score', 'compliance_score' ] ];
 	if ( defined( 'ENTITYIQ_VERSION' ) || get_option( 'entityiq_settings' ) !== false )
@@ -251,6 +251,23 @@ function bwg_suite_shared_credential_sources( string $canonical_name ): array {
 						// falls back to the raw value if it was never encrypted.
 						$decrypted = bwg_suite_decrypt_secret( $stored );
 						return $decrypted !== '' ? $decrypted : $stored;
+					},
+				],
+			];
+		case 'google_api_key':
+			// General Google Cloud API key (PageSpeed Insights / Safe Browsing) —
+			// a different credential from google_places_api_key above, but
+			// commonly issued from the same Google Cloud project.
+			return [
+				[
+					'label'  => 'Compliance',
+					'active' => static function () {
+						return class_exists( 'BWG_Compliance_Auditor' );
+					},
+					'fetch'  => static function () {
+						$settings = get_option( 'bwg_compliance_settings', [] );
+						$raw      = is_array( $settings ) ? (string) ( $settings['google_api_key'] ?? '' ) : '';
+						return $raw === '' ? '' : bwg_suite_decrypt_secret( $raw );
 					},
 				],
 			];
