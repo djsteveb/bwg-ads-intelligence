@@ -105,7 +105,9 @@ git push -u origin claude/implement-email-layer-U9k6B
 
 ## Build Status
 
-**Last completed milestone:** Security review — IDOR protection, captcha on resume, access-code lockout, cron guards, abuse notifications
+**Last completed milestone:** Cross-repo security audit (2026-07-08) — CAPTCHA now fails closed instead of skipping verification when unconfigured; `uninstall.php`'s option cleanup list fixed to match actual registered option names; five previously-plaintext credentials (SendGrid, Postmark, EntityIQ HMAC secret, CAPTCHA secret, Google Places key) encrypted at rest (AES-256-CBC); joined the BWG suite's shared-credential system so the Google Places key falls back to a sibling plugin's key when not configured here. See `1-map-synposises` (`CAPABILITIES.md`) for the full cross-repo writeup.
+
+**Previous milestone:** Security review — IDOR protection, captcha on resume, access-code lockout, cron guards, abuse notifications
 
 **Next milestone to build:** QA / staging deployment
 
