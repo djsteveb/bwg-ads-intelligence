@@ -43,13 +43,25 @@ Everything in the Phase 2 scope tier (`docs/PHASE-2-STATUS.md`) will be built **
 ### 5. Claude vision image compliance
 
 - Call the Anthropic Messages API directly (vision-capable model, image input) via `wp_remote_post()` from PHP — passing each ad's image or Meta snapshot screenshot and the same HIPAA/42 CFR Part 2/outcome-guarantee rules the text engine already checks for, adapted into an image-analysis prompt.
+- **Port, don't design from scratch:** `BWG-Ads-Acount-Audit`'s `class-bwg-maa-vision.php` (see "Update" below) already implements this exact plumbing — fetch image via `wp_remote_get()`, enforce a 5MB size cap, validate/default the content-type, base64-encode, POST to `https://api.anthropic.com/v1/messages` with an image content block, parse `content[].text` blocks from the response, and return a structured `{ad_name, image_url, findings}` or `{..., error}` per creative. Reuse that structure; swap only the prompt text (theirs is a design critique — "weak visual hierarchy... missing CTA" — ours needs to ask about HIPAA phrasing, outcome guarantees, and 42 CFR Part 2 patterns visible in the creative, e.g. testimonials, before/after imagery, specific-outcome claims).
 - **New file:** `ads-intel/class-bwg-ai-vision-compliance.php`, invoked from the existing `class-bwg-ai-compliance.php` pipeline alongside (not instead of) the text rule engine — `compliance_flags` JSON gains a `source: 'text'|'vision'` field per flag.
-- **New option:** `bwg_ai_anthropic_api_key` (encrypted). Per the 1-map-synposises CAPABILITIES.md audit, an OpenAI/LLM-key entry is already flagged suite-wide as "duplicated across 6+ plugins, not yet in the shared-credential resolver" — worth adding this key to that resolver (`bwg_suite_shared_credential_sources()`) when it's built here, rather than creating a 7th independent copy. That's a suite-level change in `bwg-auto-mailing-systems`, tracked as a follow-up, not a blocker for this plugin.
+- **New option:** `bwg_ai_anthropic_api_key` (encrypted). Per the 1-map-synposises CAPABILITIES.md audit, an OpenAI/LLM-key entry is already flagged suite-wide as "duplicated across 6+ plugins, not yet in the shared-credential resolver" — worth adding this key to that resolver (`bwg_suite_shared_credential_sources()`) when it's built here, rather than creating a 7th independent copy (`bwg-meta-audit` stores its own Anthropic key too — an 8th, if nothing changes). That's a suite-level change in `bwg-auto-mailing-systems`, tracked as a follow-up, not a blocker for this plugin.
 
 ### 6. PDF export + 4 additional audience reports
 
-- Use a pure-PHP HTML→PDF library (Dompdf, via Composer) to render the existing report-template HTML server-side — no headless browser, no Node service.
+- **Use browser print-to-PDF, not a server-side library.** `BWG-Ads-Acount-Audit`'s v1.0 PDF export is `window.print()` on a print-styled report template (`templates/pdf-report.php`) — an "Export PDF" button using the browser's native print dialog, saving as PDF. Zero dependencies (no Dompdf, no Puppeteer, no Composer package), works on any OS, and is already proven in a sibling plugin rather than an untested new approach. Build a print-optimized CSS variant of the existing report template the same way.
 - The 4 additional audience reports (CMO, Compliance/Legal, Agency Internal, Admissions Director) are new PHP/HTML templates (`admin/partials/report-template-{audience}.php`) reusing the existing report data pipeline (`class-bwg-ai-report.php` already assembles the underlying audit dataset for the Executive report) — no new external dependency at all, just template + data-mapping work.
+
+## Update (2026-08-31): a sibling plugin already has working code for two of these
+
+`djsteveb/BWG-Ads-Acount-Audit` (WP plugin slug `bwg-meta-audit`) was listed in the `1-map-synposises` Phase 3 audit as "markdown spec only, no code written yet" — that's now stale. It ships full working code: Phases 1–6, a suite REST layer, and "V2 modules" including creative vision analysis and a landing-page message-match checker. Two pieces are directly relevant and are folded into §5 and §6 above:
+
+- **`includes/class-bwg-maa-vision.php`** — the vision-compliance reference §5 now points to.
+- **`includes/class-bwg-maa-pdf.php`** — the browser print-to-PDF approach §6 now uses instead of Dompdf.
+
+Two more pieces are worth knowing about but don't change scope in this pass:
+- **`includes/class-bwg-maa-landing-page.php`** — HTTP-fetch a landing page, time the load, and flag missing pixels / slow load / headline mismatch. Directly relevant to the deferred **Phase 6 Landing Page Spider** (not in this pass, but a real reference for whenever that gets built).
+- **A live suite REST API** (`bwg-maa/v1/run-audit`, `bwg-maa/v1/audit/{id}`, gated by an `X-BWG-Plugin-Slug` allowlist + `manage_options`) that accepts a Meta Marketing API insights CSV and returns a structured audit. This is **not** a substitute for anything in this plan — it audits an *already-access-granted* ad account's spend/CTR/CPA performance (via the Marketing API), whereas everything in §1–4 above is about *pre-access* public ad discovery (via the Ad Library API, a different Meta API with a different permission model). But it's a real integration option for **Phase 5 (Access Request Funnel)**: once a prospect grants Meta ad account access, `bwg-ads-intel` could hand the resulting CSV to `bwg-meta-audit`'s REST API (soft dependency, `class_exists()`-gated same as the existing `bwg-speed-sitescout` pattern) instead of building a second account-performance audit engine. Flagged as a follow-up, not built in this pass — the discovery-phase work above doesn't depend on it.
 
 ### 7. Screenshot storage / admin dashboard
 
@@ -66,10 +78,11 @@ Everything in the Phase 2 scope tier (`docs/PHASE-2-STATUS.md`) will be built **
 |---|---|---|
 | M11 | Fix Meta Ad Library — replace EntityIQ job-queue calls in `class-bwg-ai-ad-surface.php` with direct Graph API calls + manual-entry fallback | **Critical — MVP is currently non-functional without this** |
 | M12 | Render-provider abstraction + Google Ads Transparency adapter | High |
-| M13 | Claude vision compliance | High |
-| M14 | PDF export (Dompdf) + remaining 4 audience reports | Medium |
+| M13 | Claude vision compliance — port `bwg-meta-audit`'s `class-bwg-maa-vision.php` pattern with a HIPAA-focused prompt | High (lower effort than originally scoped — proven reference exists) |
+| M14 | PDF export via browser print-to-PDF (`bwg-meta-audit`'s approach) + remaining 4 audience reports | Medium (lower effort — no library/dependency work needed) |
 | M15 | LinkedIn/TikTok adapters (after a ToS feasibility spike) | Medium |
 | — | Bing/Microsoft ads | Cut from scope — no public data source exists |
+| — | Phase 5 integration: call `bwg-meta-audit`'s suite REST API for post-access-grant account audits (soft dependency) | Follow-up, not this pass |
 
 ## Before starting
 
