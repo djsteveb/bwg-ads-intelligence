@@ -562,7 +562,7 @@
 }
 
 /* ============================================================
-   INDETERMINATE PROGRESS (Step 3 — EntityIQ loading)
+   INDETERMINATE PROGRESS (Step 3 — Meta Ad Library lookup)
    ============================================================ */
 .bwg-ai-progress-indeterminate {
 	width: 40% !important;
@@ -719,6 +719,23 @@
 	font-size: 12px;
 	color: var(--ink3);
 	font-style: italic;
+}
+
+.bwg-ai-ad-snapshot-link {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.bwg-ai-ad-snapshot-link a {
+	font-size: 13px;
+	font-weight: 600;
+	color: var(--teal, #0d7d7d);
+	text-decoration: none;
+}
+
+.bwg-ai-ad-snapshot-link a:hover {
+	text-decoration: underline;
 }
 
 /* ============================================================

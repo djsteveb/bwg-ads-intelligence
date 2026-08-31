@@ -36,6 +36,7 @@ $options = [
 	'bwg_ai_entityiq_url',
 	'bwg_ai_entityiq_secret',
 	'bwg_ai_google_places_key',
+	'bwg_ai_meta_ad_library_token',
 	'bwg_ai_captcha_site_key',
 	'bwg_ai_captcha_secret_key',
 	'bwg_ai_booking_url',

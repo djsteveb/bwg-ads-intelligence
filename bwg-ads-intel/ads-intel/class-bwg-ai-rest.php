@@ -61,6 +61,12 @@ class BWG_AI_Rest {
 			'permission_callback' => [ $this, 'require_nonce' ],
 		] );
 
+		register_rest_route( $ns, $b . '/manual-ads', [
+			'methods'             => 'POST',
+			'callback'            => [ $this, 'manual_ads' ],
+			'permission_callback' => [ $this, 'require_nonce' ],
+		] );
+
 		// Phase 5 — Access Funnel
 		register_rest_route( $ns, $b . '/access-status', [
 			'methods'             => 'POST',
@@ -106,13 +112,6 @@ class BWG_AI_Rest {
 		register_rest_route( $ns, $b . '/resume', [
 			'methods'             => 'POST',
 			'callback'            => [ $this, 'resume' ],
-			'permission_callback' => '__return_true',
-		] );
-
-		// EntityIQ webhook (HMAC auth — no WP nonce)
-		register_rest_route( $ns, $b . '/entityiq-webhook', [
-			'methods'             => 'POST',
-			'callback'            => [ $this, 'entityiq_webhook' ],
 			'permission_callback' => '__return_true',
 		] );
 	}
@@ -254,7 +253,7 @@ class BWG_AI_Rest {
 		BWG_AI_Session::update_step( $session->id, 1 );
 		BWG_AI_Session::log( $session->id, 'discovery_confirmed', 'User confirmed discovery data.' );
 
-		// Queue Phase 2 EntityIQ ad surface job (implemented in M5).
+		// Queue Phase 2 Meta Ad Library lookup.
 		do_action( 'bwg_ai_queue_ad_surface', $session->id );
 
 		return new WP_REST_Response( [ 'ok' => true, 'step' => 1 ], 200 );
@@ -278,11 +277,11 @@ class BWG_AI_Rest {
 		);
 
 		return new WP_REST_Response( [
-			'session_id'     => $session->id,
-			'step'           => (int) $session->step_completed,
-			'status'         => $session->status,
-			'entityiq_job_id'=> $session->entityiq_job_id,
-			'ads_found'      => $ad_count,
+			'session_id'      => $session->id,
+			'step'            => (int) $session->step_completed,
+			'status'          => $session->status,
+			'ads_found'       => $ad_count,
+			'meta_configured' => BWG_AI_Meta_Ad_Library::is_configured(),
 		], 200 );
 	}
 
@@ -298,8 +297,8 @@ class BWG_AI_Rest {
 		global $wpdb;
 		$ads = $wpdb->get_results(
 			$wpdb->prepare(
-				"SELECT id, platform, ad_id, ad_copy, ad_image_url, screenshot_path,
-				        run_dates, spend_range, user_confirmed, compliance_flags
+				"SELECT id, platform, ad_id, ad_copy, ad_image_url, ad_snapshot_url, screenshot_path,
+				        run_dates, spend_range, user_confirmed, compliance_flags, source
 				 FROM `{$wpdb->prefix}bwg_ai_ads`
 				 WHERE session_id = %d
 				 ORDER BY platform, id",
@@ -367,7 +366,7 @@ class BWG_AI_Rest {
 			return $this->error( 'invalid_data', 'accounts must be a non-empty array.', 400 );
 		}
 
-		// Sanitize and store hints for next EntityIQ pass.
+		// Sanitize and store hints for next Meta Ad Library pass.
 		$hints = [];
 		foreach ( $accounts as $acct ) {
 			$hints[] = [
@@ -378,10 +377,38 @@ class BWG_AI_Rest {
 
 		BWG_AI_Session::log( $session->id, 'accounts_added', 'Additional accounts submitted.', [ 'accounts' => $hints ] );
 
-		// Trigger another EntityIQ surface job with the new hints (M5).
+		// Trigger another Meta Ad Library lookup with the new hints.
 		do_action( 'bwg_ai_queue_ad_surface', $session->id, $hints );
 
 		return new WP_REST_Response( [ 'ok' => true, 'queued' => count( $hints ) ], 200 );
+	}
+
+	/**
+	 * POST /manual-ads
+	 * Saves ads the user pasted in by hand (Ad Library snapshot URL + optional
+	 * copy) — the fallback path when no Meta Ad Library token is configured.
+	 */
+	public function manual_ads( WP_REST_Request $request ) {
+		$session_id = absint( $request->get_param( 'session_id' ) );
+		$session    = $this->get_session_or_error( $session_id, $request );
+		if ( is_wp_error( $session ) ) {
+			return $session;
+		}
+
+		$entries = $request->get_param( 'ads' ); // [ { ad_snapshot_url, ad_copy? } ]
+		if ( ! is_array( $entries ) || empty( $entries ) ) {
+			return $this->error( 'invalid_data', 'ads must be a non-empty array.', 400 );
+		}
+
+		if ( count( $entries ) > 25 ) {
+			return $this->error( 'too_many', 'Please submit 25 ads or fewer at a time.', 400 );
+		}
+
+		$saved = ( new BWG_AI_Ad_Surface() )->save_manual_ads( $session->id, $entries );
+
+		BWG_AI_Session::log( $session->id, 'manual_ads_submitted', "{$saved} manually entered ads saved." );
+
+		return new WP_REST_Response( [ 'ok' => true, 'saved' => $saved ], 200 );
 	}
 
 	/**
@@ -701,38 +728,6 @@ class BWG_AI_Rest {
 			'website_url'  => $session->website_url,
 			'discovered'   => $discovered ? $this->format_discovered( $discovered ) : null,
 		], 200 );
-	}
-
-	/**
-	 * POST /entityiq-webhook
-	 * Called by EntityIQ when an ad surface job completes.
-	 */
-	public function entityiq_webhook( WP_REST_Request $request ) {
-		$verified = BWG_AI_Security::verify_webhook_signature( $request );
-		if ( is_wp_error( $verified ) ) {
-			return $verified;
-		}
-
-		$payload    = $request->get_json_params();
-		$session_id = absint( $payload['session_id'] ?? 0 );
-		$job_id     = sanitize_text_field( $payload['job_id'] ?? '' );
-		$ads        = $payload['ads'] ?? [];
-
-		if ( ! $session_id ) {
-			return $this->error( 'invalid_payload', 'Missing session_id.', 400 );
-		}
-
-		$session = BWG_AI_Session::get( $session_id );
-		if ( ! $session ) {
-			return $this->error( 'session_not_found', 'Session not found.', 404 );
-		}
-
-		// Delegate to Ad Surface handler (M5 fills this out).
-		do_action( 'bwg_ai_webhook_received', $session_id, $job_id, $ads, $payload );
-
-		BWG_AI_Session::log( $session_id, 'webhook_received', "EntityIQ job {$job_id} — " . count( $ads ) . ' ads.' );
-
-		return new WP_REST_Response( [ 'ok' => true ], 200 );
 	}
 
 	// -------------------------------------------------------------------------

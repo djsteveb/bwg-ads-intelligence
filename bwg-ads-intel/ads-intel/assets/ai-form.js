@@ -5,7 +5,7 @@
  *   0 — URL + email entry form
  *   1 — Discovery running (progress bar polling)
  *   2 — Discovery review (confirm/edit discovered data)
- *   3 — Ad surface loading (EntityIQ running, polling for completion)
+ *   3 — Ad surface loading (Meta Ad Library lookup running, polling for completion)
  *   4 — Ad gallery (confirm/flag each ad, add more accounts)
  *   5 — Access funnel (platform cards, request access, CSV upload)
  *   6 — Report stub (M9)
@@ -455,11 +455,21 @@
 			.done( function ( res ) {
 				var dbStep   = parseInt( res.step, 10 );
 				var adsFound = parseInt( res.ads_found, 10 );
+				state.metaConfigured = !! res.meta_configured;
 
 				if ( dbStep >= 2 || adsFound > 0 ) {
 					clearAdSurfacePoll();
 					$( '#bwg-ai-ads-task' ).text( 'Found ' + adsFound + ' ad' + ( adsFound === 1 ? '' : 's' ) + '!' );
 					setTimeout( renderStep4, 800 );
+					return;
+				}
+
+				// No automated Meta Ad Library lookup is possible without a
+				// token configured — skip straight to the manual-entry flow
+				// instead of polling for up to 10 minutes for nothing.
+				if ( ! state.metaConfigured ) {
+					clearAdSurfacePoll();
+					setTimeout( renderStep4, 400 );
 					return;
 				}
 
@@ -483,6 +493,68 @@
 			clearTimeout( state.adsSurfacePollTimer );
 			state.adsSurfacePollTimer = null;
 		}
+	}
+
+	/* Manual ad entry (no Meta token configured) --------------------- */
+
+	function manualAdsFormHtml( suffix ) {
+		var id = function ( base ) { return 'bwg-ai-' + base + '-' + suffix; };
+		return '<div class="bwg-ai-manual-ads-form" id="' + id( 'manual-form' ) + '">' +
+			'<p style="font-size:14px;color:var(--ink2);margin-bottom:16px;font-weight:500;">Paste the URL of each ad from the Meta Ad Library, plus the ad copy if you have it.</p>' +
+			'<div class="bwg-ai-manual-rows" id="' + id( 'manual-rows' ) + '">' +
+				manualRowHtml( suffix, 0 ) +
+			'</div>' +
+			'<button class="bwg-ai-btn bwg-ai-btn-outline bwg-ai-btn-sm" id="' + id( 'manual-add' ) + '" style="margin-top:8px;">+ Add another ad</button>' +
+			'<div class="bwg-ai-btn-row" style="margin-top:16px;">' +
+				'<button class="bwg-ai-btn bwg-ai-btn-primary" id="' + id( 'manual-submit' ) + '">Save These Ads</button>' +
+			'</div>' +
+		'</div>';
+	}
+
+	function manualRowHtml( suffix, idx ) {
+		var rowId = 'bwg-ai-manual-row-' + suffix + '-' + idx;
+		return '<div class="bwg-ai-manual-row" id="' + rowId + '" style="margin-bottom:12px;">' +
+			'<input type="url" class="bwg-ai-manual-url" id="bwg-ai-manual-url-' + suffix + '-' + idx + '" placeholder="https://www.facebook.com/ads/library/?id=…" style="width:100%;margin-bottom:6px;">' +
+			'<textarea class="bwg-ai-manual-copy" id="bwg-ai-manual-copy-' + suffix + '-' + idx + '" placeholder="Ad copy (optional)" rows="2" style="width:100%;"></textarea>' +
+		'</div>';
+	}
+
+	function bindManualAdsForm( suffix ) {
+		var id    = function ( base ) { return '#bwg-ai-' + base + '-' + suffix; };
+		var count = [ 1 ];
+
+		$( id( 'manual-add' ) ).on( 'click', function () {
+			$( id( 'manual-rows' ) ).append( manualRowHtml( suffix, count[0] ) );
+			count[0]++;
+		} );
+
+		$( id( 'manual-submit' ) ).on( 'click', function () {
+			var entries = [];
+			for ( var i = 0; i < count[0]; i++ ) {
+				var url  = $( '#bwg-ai-manual-url-' + suffix + '-' + i ).val();
+				var copy = $( '#bwg-ai-manual-copy-' + suffix + '-' + i ).val();
+				url = url ? url.trim() : '';
+				if ( url ) { entries.push( { ad_snapshot_url: url, ad_copy: copy ? copy.trim() : '' } ); }
+			}
+
+			if ( ! entries.length ) {
+				showNotice( 'Please paste at least one Ad Library URL.', 'info' );
+				return;
+			}
+
+			setLoading( id( 'manual-submit' ), true );
+
+			apiPost( '/manual-ads', { session_id: state.sessionId, ads: entries } )
+				.done( function ( res ) {
+					showNotice( ( res.saved || entries.length ) + ' ad(s) saved.', 'success' );
+					setLoading( id( 'manual-submit' ), false );
+					renderStep4();
+				} )
+				.fail( function ( xhr ) {
+					setLoading( id( 'manual-submit' ), false );
+					showNotice( apiError( xhr, 'Could not save ads. Please try again.' ), 'error' );
+				} );
+		} );
 	}
 
 	/* ------------------------------------------------------------------ */
@@ -521,6 +593,18 @@
 		var ads = state.ads;
 
 		if ( ! ads.length ) {
+			if ( state.metaConfigured === false ) {
+				$( '#bwg-ai-gallery-wrap' ).html(
+					'<div style="text-align:center;padding:32px 0 24px;">' +
+						'<p style="font-size:15px;color:var(--ink2);font-weight:500;margin-bottom:8px;">Automatic ad lookup isn\'t available yet.</p>' +
+						'<p style="font-size:13px;color:var(--ink3);max-width:420px;margin:0 auto;">Paste in links to your ads from the <a href="https://www.facebook.com/ads/library/" target="_blank" rel="noopener">Meta Ad Library</a> and we\'ll run compliance checks on them.</p>' +
+					'</div>' +
+					manualAdsFormHtml( 'main' )
+				);
+				bindManualAdsForm( 'main' );
+				return;
+			}
+
 			$( '#bwg-ai-gallery-wrap' ).html(
 				'<div style="text-align:center;padding:32px 0 24px;">' +
 					'<p style="font-size:15px;color:var(--ink2);font-weight:500;margin-bottom:8px;">No ads found yet.</p>' +
@@ -551,10 +635,12 @@
 				'</div>' +
 			'</div>' +
 			'<div class="bwg-ai-add-accounts-wrap">' +
-				'<button class="bwg-ai-btn bwg-ai-btn-outline bwg-ai-btn-block" id="bwg-ai-toggle-add-accounts">+ Add More Ad Accounts</button>' +
-				'<div id="bwg-ai-add-accounts-panel" style="display:none;margin-top:16px;">' +
-					addAccountsFormHtml( 'panel' ) +
-				'</div>' +
+				( state.metaConfigured === false
+					? '<button class="bwg-ai-btn bwg-ai-btn-outline bwg-ai-btn-block" id="bwg-ai-toggle-manual-ads">+ Add More Ads Manually</button>' +
+					  '<div id="bwg-ai-manual-ads-panel" style="display:none;margin-top:16px;">' + manualAdsFormHtml( 'panel' ) + '</div>'
+					: '<button class="bwg-ai-btn bwg-ai-btn-outline bwg-ai-btn-block" id="bwg-ai-toggle-add-accounts">+ Add More Ad Accounts</button>' +
+					  '<div id="bwg-ai-add-accounts-panel" style="display:none;margin-top:16px;">' + addAccountsFormHtml( 'panel' ) + '</div>'
+				) +
 			'</div>'
 		);
 
@@ -575,13 +661,21 @@
 
 		$( '#bwg-ai-confirm-ads' ).on( 'click', submitConfirmAds );
 
-		$( '#bwg-ai-toggle-add-accounts' ).on( 'click', function () {
-			var $panel = $( '#bwg-ai-add-accounts-panel' );
-			$panel.slideToggle( 200 );
-			$( this ).text( $panel.is( ':hidden' ) ? '+ Add More Ad Accounts' : '− Hide' );
-		} );
-
-		bindAddAccountsForm( 'panel' );
+		if ( state.metaConfigured === false ) {
+			$( '#bwg-ai-toggle-manual-ads' ).on( 'click', function () {
+				var $panel = $( '#bwg-ai-manual-ads-panel' );
+				$panel.slideToggle( 200 );
+				$( this ).text( $panel.is( ':hidden' ) ? '+ Add More Ads Manually' : '− Hide' );
+			} );
+			bindManualAdsForm( 'panel' );
+		} else {
+			$( '#bwg-ai-toggle-add-accounts' ).on( 'click', function () {
+				var $panel = $( '#bwg-ai-add-accounts-panel' );
+				$panel.slideToggle( 200 );
+				$( this ).text( $panel.is( ':hidden' ) ? '+ Add More Ad Accounts' : '− Hide' );
+			} );
+			bindAddAccountsForm( 'panel' );
+		}
 	}
 
 	/* Ad card HTML --------------------------------------------------- */
@@ -606,6 +700,12 @@
 			imgHtml = '<div class="bwg-ai-ad-image">' +
 				'<img src="' + esc( ad.ad_image_url ) + '" alt="" loading="lazy"' +
 				' onerror="this.parentNode.innerHTML=\'<div class=\\\"bwg-ai-ad-image-ph\\\">No image</div>\';">' +
+				'</div>';
+		} else if ( ad.ad_snapshot_url ) {
+			// Meta hosts its own rendered snapshot of the ad — link out to it
+			// rather than capturing our own screenshot.
+			imgHtml = '<div class="bwg-ai-ad-image bwg-ai-ad-snapshot-link">' +
+				'<a href="' + esc( ad.ad_snapshot_url ) + '" target="_blank" rel="noopener">View Ad Snapshot ↗</a>' +
 				'</div>';
 		} else {
 			imgHtml = '<div class="bwg-ai-ad-image"><div class="bwg-ai-ad-image-ph">No image</div></div>';
@@ -1096,7 +1196,7 @@
 					// Discovery not confirmed yet — show review if data exists, else poll.
 					if ( res.discovered ) { renderStep2(); } else { renderStep1(); }
 				} else if ( dbStep === 1 ) {
-					// Discovery confirmed, waiting for EntityIQ or ads just arrived.
+					// Discovery confirmed, waiting for the Meta Ad Library lookup or ads just arrived.
 					renderStep2();
 				} else if ( dbStep === 2 ) {
 					// Ads arrived, but user hasn't confirmed yet — show gallery.

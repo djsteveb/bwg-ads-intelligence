@@ -161,54 +161,6 @@ class BWG_AI_Security {
 	}
 
 	// -------------------------------------------------------------------------
-	// EntityIQ webhook signature (HMAC-SHA256)
-	// -------------------------------------------------------------------------
-
-	/**
-	 * Verify the HMAC-SHA256 signature on an incoming EntityIQ webhook request.
-	 *
-	 * Expected headers:
-	 *   X-BWG-Signature: sha256=<hex>
-	 *   X-BWG-Timestamp: <unix timestamp>
-	 *
-	 * The signed payload is: raw_body + timestamp.
-	 * Requests older than 5 minutes are rejected to prevent replay attacks.
-	 *
-	 * @param WP_REST_Request $request
-	 * @return true|WP_Error
-	 */
-	public static function verify_webhook_signature( WP_REST_Request $request ) {
-		$secret = bwg_ai_decrypt_secret( get_option( 'bwg_ai_entityiq_secret', '' ) );
-
-		if ( empty( $secret ) ) {
-			return new WP_Error( 'webhook_not_configured', 'Webhook secret not configured.', [ 'status' => 503 ] );
-		}
-
-		$sig_header = $request->get_header( 'X-BWG-Signature' );
-		$timestamp  = $request->get_header( 'X-BWG-Timestamp' );
-
-		if ( ! $sig_header || ! $timestamp ) {
-			return new WP_Error( 'webhook_missing_headers', 'Missing signature headers.', [ 'status' => 401 ] );
-		}
-
-		// Replay protection: reject if timestamp is more than 5 minutes old.
-		if ( abs( time() - (int) $timestamp ) > 300 ) {
-			return new WP_Error( 'webhook_replay', 'Request timestamp out of range.', [ 'status' => 401 ] );
-		}
-
-		$raw_body = $request->get_body();
-		$expected = 'sha256=' . hash_hmac( 'sha256', $raw_body . $timestamp, $secret );
-
-		// Constant-time comparison to prevent timing attacks.
-		if ( ! hash_equals( $expected, $sig_header ) ) {
-			BWG_AI_Session::log( null, 'webhook_sig_fail', 'Webhook signature mismatch.' );
-			return new WP_Error( 'webhook_invalid_sig', 'Invalid webhook signature.', [ 'status' => 401 ] );
-		}
-
-		return true;
-	}
-
-	// -------------------------------------------------------------------------
 	// IP helpers
 	// -------------------------------------------------------------------------
 
@@ -348,4 +300,12 @@ function bwg_ai_get_google_places_key(): string {
 		}
 	}
 	return '';
+}
+
+/**
+ * Resolve the Meta Ad Library (Graph API ads_archive) access token.
+ * Long-lived token from a Meta developer app with the ads_read permission.
+ */
+function bwg_ai_get_meta_ad_library_token(): string {
+	return bwg_ai_decrypt_secret( (string) get_option( 'bwg_ai_meta_ad_library_token', '' ) );
 }

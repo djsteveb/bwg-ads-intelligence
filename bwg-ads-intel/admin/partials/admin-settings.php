@@ -238,6 +238,15 @@ function bwg_ai_settings_api() {
 				</td>
 			</tr>
 			<tr>
+				<th scope="row"><label for="bwg_ai_meta_ad_library_token">Meta Ad Library Token</label></th>
+				<td>
+					<input type="password" id="bwg_ai_meta_ad_library_token" name="bwg_ai_meta_ad_library_token"
+					       value="<?php echo esc_attr( bwg_ai_decrypt_secret( get_option( 'bwg_ai_meta_ad_library_token', '' ) ) ); ?>"
+					       class="regular-text" autocomplete="new-password">
+					<p class="description">Long-lived access token from a Meta developer app with the <code>ads_read</code> permission. Used to query the Ad Library <code>ads_archive</code> endpoint directly. Leave blank to fall back to manual ad entry.</p>
+				</td>
+			</tr>
+			<tr>
 				<th scope="row"><label for="bwg_ai_captcha_site_key">Cloudflare Turnstile Site Key</label></th>
 				<td>
 					<input type="text" id="bwg_ai_captcha_site_key" name="bwg_ai_captcha_site_key"

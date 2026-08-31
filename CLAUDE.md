@@ -2,13 +2,15 @@
 
 This file is the first thing a new AI chat session should read. It contains enough context to continue the build without re-reading everything from scratch.
 
-**Always read this file first. Then read `docs/BUILD-PLAN.md` for the ordered task list.**
+**Always read this file first. Then read `docs/BUILD-PLAN.md` for the MVP milestone spec (M0–M10, complete) and `docs/PHASE-2-STATUS.md` + `docs/PHASE-2-BUILD-PLAN.md` for the current Phase 2 work (M11+).**
 
 ---
 
 ## What This Project Is
 
-A WordPress plugin (`bwg-ads-intel`) + Node.js EntityIQ extension that audits treatment center advertisers' full ad footprint across 6+ platforms, runs HIPAA + platform compliance analysis, and converts cold URL entries into managed-service clients ($3k–$10k/mo).
+A WordPress plugin (`bwg-ads-intel`) that audits treatment center advertisers' full ad footprint across 6+ platforms, runs HIPAA + platform compliance analysis, and converts cold URL entries into managed-service clients ($3k–$10k/mo).
+
+**Single codebase, self-contained.** The plugin was originally spec'd as a two-repo architecture (this WP plugin + a separate Node.js "EntityIQ" extension doing ad-scraping/vision/PDF work). A 2026-08-31 investigation found EntityIQ never built that side and has no plan to. As of M11, all ad-surface/vision/PDF work is built directly in this plugin, in PHP, calling external APIs (Meta, Google, Anthropic) directly — see `docs/PHASE-2-STATUS.md`.
 
 **Entry:** Public URL form on a WordPress site (shortcode `[bwg_ads_intel]`)  
 **Exit:** Multi-audience audit reports + access to retained managed services
@@ -72,44 +74,31 @@ entityiq-extension/                ← Node.js additions (separate repo, differe
     └── pdf-report.js
 ```
 
-**Note:** The `entityiq-extension/` directory contains specs for the EntityIQ agent working in the other repository. Do not build those files here — they live in the EntityIQ repo.
-
----
-
-## Two Codebases, Two Agents
-
-| Layer | Repo | Agent |
-|---|---|---|
-| WordPress Plugin | This repo (`bwg-ads-intelligence`) | This agent |
-| EntityIQ Node.js extension | EntityIQ repo (separate) | Other agent |
-
-The WP plugin fires async REST calls to EntityIQ for heavy jobs (scraping, screenshots, vision). EntityIQ calls back via webhook when done.
-
-**For the EntityIQ agent** — everything it needs to build is in `docs/ARCHITECTURE.md` (webhook auth, storage, .env vars) and `docs/BUILD-PLAN.md` (Milestone 5, EntityIQ side section).
+**Note:** The `entityiq-extension/` directory below is a historical artifact from the abandoned two-repo design (specs that were meant for a separate EntityIQ agent that never built them). It is not built or maintained — do not add files there. See `docs/PHASE-2-STATUS.md` for the full history.
 
 ---
 
 ## Git Branch
 
-All work goes on: `claude/implement-email-layer-U9k6B`
+Each milestone gets its own feature branch off `main` (see the branch name given in that session's task). Recent example: M11 landed on `claude/meta-ad-library-m11-xwbmbc`.
 
 ```bash
-git checkout claude/implement-email-layer-U9k6B
+git checkout -b claude/{milestone-slug}
 # ... make changes ...
 git add <specific files>
 git commit -m "[M{N}] milestone name — summary"
-git push -u origin claude/implement-email-layer-U9k6B
+git push -u origin claude/{milestone-slug}
 ```
 
 ---
 
 ## Build Status
 
-**Last completed milestone:** Cross-repo security audit (2026-07-08) — CAPTCHA now fails closed instead of skipping verification when unconfigured; `uninstall.php`'s option cleanup list fixed to match actual registered option names; five previously-plaintext credentials (SendGrid, Postmark, EntityIQ HMAC secret, CAPTCHA secret, Google Places key) encrypted at rest (AES-256-CBC); joined the BWG suite's shared-credential system so the Google Places key falls back to a sibling plugin's key when not configured here. See `1-map-synposises` (`CAPABILITIES.md`) for the full cross-repo writeup.
+**Last completed milestone:** M11 — Fix Meta Ad Library integration (2026-08-31). A Phase 2 scope investigation found EntityIQ (the Node.js service M5's ad-surface job was supposed to call) was never built and has no plan to be. `class-bwg-ai-ad-surface.php` now calls a new `class-bwg-ai-meta-ad-library.php` directly against the Meta Graph API `ads_archive` endpoint — no job queue, no HMAC webhook, no headless browser. Manual-entry fallback (paste Ad Library URLs) when no token is configured. `docs/ARCHITECTURE.md` §1/§5 rewritten; see `docs/PHASE-2-STATUS.md` and `docs/PHASE-2-BUILD-PLAN.md` for the full writeup and what's next (M12–M15).
 
-**Previous milestone:** Security review — IDOR protection, captcha on resume, access-code lockout, cron guards, abuse notifications
+**Previous milestone:** Cross-repo security audit (2026-07-08) — CAPTCHA fails closed, uninstall option list fixed, five credentials encrypted at rest, joined the BWG suite shared-credential system.
 
-**Next milestone to build:** QA / staging deployment
+**Next milestone to build:** M12 — Google Ads Transparency (see `docs/PHASE-2-BUILD-PLAN.md`)
 
 **Milestones:**
 - [x] Planning — docs written, todos set
@@ -118,13 +107,18 @@ git push -u origin claude/implement-email-layer-U9k6B
 - [x] M2 — Phase 1 Discovery Engine
 - [x] M3 — Front-end form shortcode
 - [x] M4 — Email layer
-- [x] M5 — Phase 2 EntityIQ integration
+- [x] M5 — Phase 2 EntityIQ integration *(superseded by M11 — EntityIQ side never existed)*
 - [x] M6 — Phase 3 Text compliance engine
 - [x] M7 — Phase 4 Screenshot gallery UI
 - [x] M8 — Phase 5 Access request funnel
 - [x] M9 — Executive report
 - [x] M10 — Admin panel
 - [x] Security review
+- [x] M11 — Fix Meta Ad Library integration (direct Graph API call, no EntityIQ)
+- [ ] M12 — Google Ads Transparency
+- [ ] M13 — Claude vision compliance
+- [ ] M14 — PDF export + remaining audience reports
+- [ ] M15 — LinkedIn/TikTok (pending ToS spike)
 
 *(Update this list after each milestone is committed.)*
 
@@ -249,24 +243,15 @@ This plugin does **not** currently have a `bwg-suite-bridge.php` file, so it doe
 
 ---
 
-> Read `/home/user/bwg-ads-intelligence/CLAUDE.md` first — it is the AI context document for this project. Then read `docs/BUILD-PLAN.md` for the ordered milestone spec. Then run `git log --oneline -10` to confirm build state.
+> Read `/home/user/bwg-ads-intelligence/CLAUDE.md` first — it is the AI context document for this project. Then read `docs/BUILD-PLAN.md` for the MVP milestone spec (M0–M10, complete) and `docs/PHASE-2-STATUS.md` + `docs/PHASE-2-BUILD-PLAN.md` for the current Phase 2 work. Then run `git log --oneline -10` to confirm build state.
 >
-> The project is: BWG Ads Intelligence System — a WordPress plugin + Node.js EntityIQ extension for auditing treatment center advertisers' ad footprint. Two-codebase architecture; this repo is the WordPress plugin only. All architectural decisions are locked in `docs/ARCHITECTURE.md`.
+> The project is: BWG Ads Intelligence System — a WordPress plugin for auditing treatment center advertisers' ad footprint. Originally spec'd as a two-repo architecture with a separate Node.js EntityIQ extension; that side was never built (see `docs/PHASE-2-STATUS.md`), so all ad-surface/vision/PDF work is now self-contained in this plugin, calling external APIs directly. All architectural decisions are locked in `docs/ARCHITECTURE.md`.
 >
-> **Current status: All milestones M0–M10 + Security Review are complete. The plugin is feature-complete for MVP.**
+> **Current status: MVP (M0–M10 + Security Review) complete. M11 (fixed the broken Meta Ad Library integration) complete.**
 >
-> **Next task: QA / staging deployment preparation.**
+> **Next task: M12 — Google Ads Transparency (see `docs/PHASE-2-BUILD-PLAN.md`).**
 >
-> Suggested checks before staging deploy:
-> - PHP syntax check across all plugin files (`php -l`)
-> - Verify all REST routes register cleanly (no fatal errors on `rest_api_init`)
-> - Test `/start` → discovery → confirm → ads → confirm-ads → access-request → report flow end-to-end
-> - Confirm rate limiting and captcha work in staging environment
-> - Verify EntityIQ webhook receives and processes a test payload
-> - Run `npm audit` on the EntityIQ extension
-> - Check admin panel: session list, detail view, settings save, storage dashboard
->
-> All architectural decisions are locked. Security review is complete. Do not add new features without a documented spec change.
+> Do not add new features beyond `docs/PHASE-2-BUILD-PLAN.md` without a documented spec change.
 
 ---
 

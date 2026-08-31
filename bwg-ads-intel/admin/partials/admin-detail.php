@@ -59,7 +59,7 @@ function bwg_ai_render_session_detail( $session_id ) {
 				</tr>
 				<tr>
 					<th>Access Code</th><td><code><?php echo esc_html( $session['access_code'] ); ?></code></td>
-					<th>EntityIQ Job</th><td><?php echo $session['entityiq_job_id'] ? esc_html( $session['entityiq_job_id'] ) : '—'; ?></td>
+					<th>Meta Ad Library</th><td><?php echo esc_html( BWG_AI_Meta_Ad_Library::is_configured() ? 'API configured' : 'Manual entry (no token)' ); ?></td>
 				</tr>
 				<tr>
 					<th>Created</th><td><?php echo esc_html( $session['created_at'] ); ?></td>
@@ -192,6 +192,10 @@ function bwg_ai_render_session_detail( $session_id ) {
 				<?php if ( $ad['screenshot_path'] || $ad['ad_image_url'] ) : ?>
 					<img src="<?php echo esc_url( $ad['screenshot_path'] ?: $ad['ad_image_url'] ); ?>"
 					     alt="" style="width:100%;height:130px;object-fit:cover;display:block;">
+				<?php elseif ( ! empty( $ad['ad_snapshot_url'] ) ) : ?>
+					<div style="height:60px;background:#f5f4f0;display:flex;align-items:center;justify-content:center;font-size:12px;">
+						<a href="<?php echo esc_url( $ad['ad_snapshot_url'] ); ?>" target="_blank" rel="noopener">View Ad Snapshot &#8599;</a>
+					</div>
 				<?php else : ?>
 					<div style="height:60px;background:#f5f4f0;display:flex;align-items:center;justify-content:center;color:#999;font-size:12px;">No screenshot</div>
 				<?php endif; ?>

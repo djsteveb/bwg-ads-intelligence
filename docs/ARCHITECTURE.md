@@ -4,26 +4,26 @@ Decisions locked before build. Change here and in CLAUDE.md if anything shifts m
 
 ---
 
-## 1. EntityIQ Webhook Authentication
+## 1. Meta Ad Library Integration (supersedes the old EntityIQ webhook design)
 
-**Decision:** Shared secret, stored in two places and passed on every callback.
+**Status (2026-08-31):** The EntityIQ Node.js extension described below was never built and has no plan to be — EntityIQ's actual roadmap is unrelated (Local SEO/schema tooling). The original design in this section (shared-secret HMAC webhook, async job queue, `entityiq-extension/routes/ads.js`, `lib/meta-ad-library.js`) never had anything on the other end and the MVP's ad surface step was non-functional as a result. **M11 replaced it**: `ads-intel/class-bwg-ai-ad-surface.php` now calls `ads-intel/class-bwg-ai-meta-ad-library.php`, which hits the Meta Graph API `ads_archive` endpoint directly from WordPress. No webhook, no HMAC signature, no remote job queue, no headless browser.
+
+**Decision:** Direct server-to-server call from WordPress to `https://graph.facebook.com/{version}/ads_archive`, using a long-lived `ads_read` token.
 
 **WordPress side:**
-- Admin setting: `bwg_ai_entityiq_secret` (WP option, encrypted at rest via `wp_encrypt_data` or stored as a salted hash)
-- Also store: `bwg_ai_entityiq_url` — base URL of the EntityIQ service
+- Admin setting: `bwg_ai_meta_ad_library_token` (WP option, AES-256-CBC encrypted at rest — see `bwg_ai_get_meta_ad_library_token()` in `class-bwg-ai-security.php`)
+- `BWG_AI_Meta_Ad_Library::search( $hints )` builds the query (`search_page_ids` when a Facebook page/ID is known, else `search_terms` from the discovered business name), calls the endpoint with `wp_remote_get()`, and normalizes each row into this plugin's ad shape.
 
-**EntityIQ side (add to `.env`):**
-```
-BWG_WEBHOOK_SECRET=<generate with openssl rand -hex 32>
-BWG_WP_WEBHOOK_URL=https://your-wp-site.com/wp-json/bwg/v1/ai/entityiq-webhook
-```
+**Flow (orchestration, in `class-bwg-ai-ad-surface.php`):**
+1. `POST /confirm-discovery` (or `/add-accounts`) fires `do_action( 'bwg_ai_queue_ad_surface', $session_id, $hints )`.
+2. `queue_job()` schedules `wp_schedule_single_event( time() + 2, 'bwg_ai_run_ad_surface', [ $session_id, $hints ] )` so the outbound Graph API call happens on WP-Cron, not inside the REST request.
+3. `run()` (hooked to `bwg_ai_run_ad_surface`) calls `BWG_AI_Meta_Ad_Library::search()` and saves results via `save_ads()` — same compliance-analysis and drip-email side effects the old webhook handler had.
 
-**Flow:**
-- EntityIQ signs every callback with `X-BWG-Signature: sha256=HMAC(secret, body)`
-- WP verifies signature before processing any webhook payload
-- Replay protection: include `timestamp` in payload, reject if >5 minutes old
+**Manual-entry fallback:** When `bwg_ai_meta_ad_library_token` is empty, `BWG_AI_Meta_Ad_Library::is_configured()` returns false and `run()` logs and returns without attempting a lookup (there is no scraper fallback — no headless browser in this pipeline). The front-end (`ai-form.js`) detects this via `meta_configured` on `GET /ad-surface-status/{id}` and switches to a manual-entry form where the user pastes Ad Library snapshot URLs (+ optional ad copy) to `POST /manual-ads`, handled by `BWG_AI_Ad_Surface::save_manual_ads()`.
 
-**For the EntityIQ agent:** See `entityiq-extension/routes/ads.js` — add the signature header to every `axios.post()` call back to WordPress. The secret lives in `process.env.BWG_WEBHOOK_SECRET`.
+**Ad snapshots:** Meta hosts its own rendered snapshot of every ad at `ad_snapshot_url` (returned by `ads_archive` and stored in `wp_bwg_ai_ads.ad_snapshot_url`). The gallery UI links out to it directly instead of capturing a screenshot — there's no Playwright/EntityIQ screenshot step in this pipeline.
+
+**Historical note:** `wp_bwg_ai_sessions.entityiq_job_id` and the `/entityiq-webhook` REST route (removed in M11) were specific to the abandoned async design and are not used by anything currently in the plugin.
 
 ---
 
@@ -111,36 +111,19 @@ private function send( $to, $subject, $html, $text = '' ) {
 
 ## 5. Meta Ad Library API Token
 
-**Decision:** Stored in EntityIQ `.env`, not in WordPress.
+**Decision (updated M11):** Stored in WordPress, not EntityIQ — there is no EntityIQ side to this plugin's ad surface pipeline (see §1).
 
-All ad library scraping runs inside EntityIQ. WordPress never touches the token directly — it just fires a job and receives results.
+**WordPress admin setting:** `bwg_ai_meta_ad_library_token` (Settings → API Keys tab), encrypted at rest with the same AES-256-CBC scheme as the other secret options (`bwg_ai_encrypt_secret()` / `bwg_ai_decrypt_secret()` in `class-bwg-ai-security.php`).
 
-**EntityIQ `.env` entries needed:**
-```
-# Meta Ad Library
-META_AD_LIBRARY_TOKEN=<your Meta developer app access token>
-META_AD_LIBRARY_FALLBACK=playwright   # 'playwright' or 'none'
+**Requirements:**
+1. The token comes from a Meta developer app with the `ads_read` permission approved for the Ad Library API.
+2. It must be a long-lived token — WordPress does not refresh short-lived tokens automatically.
+3. If the token is absent, `BWG_AI_Ad_Surface::run()` skips the automated lookup entirely and the front-end falls back to manual ad entry (see §1). There is no scraper fallback (no Playwright, no headless browser anywhere in this plugin).
 
-# Google Ads Transparency
-GOOGLE_ADS_TRANSPARENCY_KEY=<Google Cloud API key with Ads Transparency Insights API enabled>
-
-# Playwright
-PLAYWRIGHT_HEADLESS=true
-PLAYWRIGHT_CONCURRENCY=3             # max concurrent browser instances
-
-# Screenshot storage
-BWG_SCREENSHOT_DIR=/var/data/bwg-screenshots
-
-# Webhook back to WordPress
-BWG_WEBHOOK_SECRET=<openssl rand -hex 32>
-BWG_WP_WEBHOOK_URL=https://your-wp-site.com/wp-json/bwg/v1/ai/entityiq-webhook
-```
-
-**For the EntityIQ agent:**
-1. Copy `.env.example` (create one from the above) to `.env` and fill in values
-2. The Meta Ad Library API token requires a Meta developer app with the `ads_read` permission approved
-3. If the token is absent or rate-limited, `meta-ad-library.js` falls back to the Playwright scraper automatically (controlled by `META_AD_LIBRARY_FALLBACK`)
-4. Google Ads Transparency API requires the "Ads Transparency Insights" API enabled in Google Cloud Console
+**Not yet built (Phase 2, later milestones):**
+- Google Ads Transparency — M12, via a render-provider abstraction (not decided yet whether that's a direct API call or a hosted render service; EntityIQ is not assumed).
+- Claude vision compliance on ad creative — M13.
+- Screenshot capture for platforms that don't host their own ad snapshot (Meta doesn't need this — see §1) — evaluated per-platform in M12+ as needed, not a blanket EntityIQ dependency.
 
 ---
 
