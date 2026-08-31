@@ -253,24 +253,24 @@ Auth: `X-WP-Nonce` on all except `/resume` (access code auth) and `/report/{toke
 
 ---
 
-> Read `/home/user/bwg-ads-intelligence/CLAUDE.md` first — it is the AI context document for this project. Then read `docs/BUILD-PLAN.md` for the ordered milestone spec. Then run `git log --oneline -10` to confirm build state.
+> Read `/home/user/bwg-ads-intelligence/CLAUDE.md` first — it is the AI context document for this project. Then read `docs/BUILD-PLAN.md` for the MVP milestone spec (M0–M10, all complete) and `docs/PHASE-2-STATUS.md` + `docs/PHASE-2-BUILD-PLAN.md` for what's next. Then run `git log --oneline -10` to confirm build state.
 >
-> The project is: BWG Ads Intelligence System — a WordPress plugin + Node.js EntityIQ extension for auditing treatment center advertisers' ad footprint. Two-codebase architecture; this repo is the WordPress plugin only. All architectural decisions are locked in `docs/ARCHITECTURE.md`.
+> The project is: BWG Ads Intelligence System — a WordPress plugin for auditing treatment center advertisers' ad footprint. It was originally spec'd as a two-codebase architecture (this WP plugin + a separate Node.js EntityIQ extension doing the ad-scraping/vision/PDF work), but a 2026-08-31 investigation found EntityIQ never built that side and has no plan to — its real roadmap is unrelated (Local SEO/schema tooling). **Decision: build the remaining ad-surface/vision/PDF work self-contained in this WordPress plugin, in PHP, calling external APIs directly — no EntityIQ dependency.** MVP architectural decisions are locked in `docs/ARCHITECTURE.md`, though §1 and §5 there still describe the old EntityIQ-dependent design and need updating as `docs/PHASE-2-BUILD-PLAN.md` is implemented.
 >
-> **Current status: All milestones M0–M10 + Security Review are complete. The plugin is feature-complete for MVP.**
+> **Current status: All milestones M0–M10 + Security Review are complete for MVP. Since then, a Phase 2 scope investigation (2026-08-31) found that the MVP Meta Ad Library integration is actually non-functional — it calls EntityIQ endpoints that don't exist in the real EntityIQ repo — and produced a full self-contained build plan to fix it plus build out Phase 2. Read `docs/PHASE-2-STATUS.md` and `docs/PHASE-2-BUILD-PLAN.md` before doing anything else.**
 >
-> **Next task: QA / staging deployment preparation.**
+> **Next task: M11 — fix the Meta Ad Library integration (critical, MVP is broken without this).**
 >
-> Suggested checks before staging deploy:
-> - PHP syntax check across all plugin files (`php -l`)
-> - Verify all REST routes register cleanly (no fatal errors on `rest_api_init`)
-> - Test `/start` → discovery → confirm → ads → confirm-ads → access-request → report flow end-to-end
-> - Confirm rate limiting and captcha work in staging environment
-> - Verify EntityIQ webhook receives and processes a test payload
-> - Run `npm audit` on the EntityIQ extension
-> - Check admin panel: session list, detail view, settings save, storage dashboard
+> Per `docs/PHASE-2-BUILD-PLAN.md` §1: replace the EntityIQ job-queue calls in `ads-intel/class-bwg-ai-ad-surface.php` (`queue_job()`, `poll()`, `post_to_entityiq()`, `get_from_entityiq()`) with a direct call to the Meta Graph API `ads_archive` endpoint. Specifically:
+> - New file `ads-intel/class-bwg-ai-meta-ad-library.php` — calls `GET https://graph.facebook.com/{version}/ads_archive` with a long-lived `ads_read` token, using the same `wp_remote_get()` + `wp_remote_post()` conventions already used elsewhere in this plugin (see `bwg_ai_get_google_places_key()` in `class-bwg-ai-security.php` for the settings/encryption pattern to follow for the new `bwg_ai_meta_ad_library_token` option).
+> - Display each ad's `ad_snapshot_url` (Meta's own hosted rendered snapshot) directly instead of capturing a screenshot — no headless browser needed for Meta.
+> - When no token is configured, fall back to a manual-entry mode (user pastes Ad Library URLs) rather than scraping — document this tradeoff in the UI.
+> - `class-bwg-ai-ad-surface.php` becomes the orchestrator that calls this class (and future platform adapters) synchronously/via WP-Cron batches, instead of queuing a remote EntityIQ job — drop the async webhook/HMAC pattern for this pipeline entirely.
+> - Update `docs/ARCHITECTURE.md` §1 and §5 to match once this is built, since they still describe the EntityIQ-dependent design being replaced.
 >
-> All architectural decisions are locked. Security review is complete. Do not add new features without a documented spec change.
+> After M11 is done and tested, continue down `docs/PHASE-2-BUILD-PLAN.md`'s milestone table in order: M12 (Google Ads Transparency via a render-provider abstraction), M13 (Claude vision compliance — port the pattern from `BWG-Ads-Acount-Audit`'s `class-bwg-maa-vision.php`, HIPAA-focused prompt), M14 (PDF export via browser print-to-PDF, same source, + the 4 remaining audience reports), M15 (LinkedIn/TikTok, after a ToS feasibility spike). Bing/Microsoft is cut from scope — no public ad-transparency data source exists for it.
+>
+> Do not add new features beyond what's in `docs/PHASE-2-BUILD-PLAN.md` without a documented spec change first.
 
 ---
 
