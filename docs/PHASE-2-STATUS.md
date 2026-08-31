@@ -69,3 +69,16 @@ No — there's no ad-scraping, vision-compliance, or ads-PDF code anywhere in En
 2. **Build it self-contained inside `bwg-ads-intel`** — implement Meta/Google/LinkedIn/TikTok/Bing scraping and PDF generation directly in PHP (or a small dedicated Node service owned by this plugin), skipping EntityIQ's Local-SEO-focused service entirely.
 
 This is a scope decision, not a technical one — flagging it for whoever owns both repos rather than assuming a direction here.
+
+## Decision (2026-08-31): build self-contained, not in EntityIQ
+
+Also checked the rest of the BWG suite (via `1-map-synposises/CAPABILITIES.md`, the cross-repo capability/conflict audit) for any sibling plugin that already has ad-library scraping, vision compliance, or ad-PDF generation to borrow from. **None exists anywhere in the suite.** The closest-sounding repos turned out to be unrelated in purpose or unusable in stack:
+
+- `-BWG-AdAutomate-AI-Orchestrator-V2B` — generates new ads (Gemini + fal.ai), doesn't audit existing ones. Confirmed standalone, not a WordPress plugin.
+- `BWG-Marketing-Intelligence-Connector` / `Marketing-Data-Clean-Room-Hub` — integrate with Meta/Google/Microsoft Ads APIs, but for the advertiser's **own** account spend/attribution data via OAuth, not public ad-transparency-library scraping of arbitrary businesses. Both are Python (FastAPI), not WordPress/PHP.
+- `bwg-auto-mailing-systems` / `webring-plus-v7` — produce a `screenshot_url` shared-cache field, but for general site screenshots, not ad creatives or ad-library pages.
+- No plugin in the suite uses Claude/Anthropic vision, or any headless-browser (Puppeteer/Playwright) capability at all — EntityIQ's only Puppeteer use is HTML→PDF, not screenshotting.
+
+**Decision: build all of it inside `bwg-ads-intel` itself**, calling external commercial APIs directly (Meta Graph API, a headless-render-as-a-service for JS-rendered ad libraries, the Anthropic API for vision, a pure-PHP PDF library) rather than depending on EntityIQ or any other sibling plugin. Full technical plan: `docs/PHASE-2-BUILD-PLAN.md`.
+
+That investigation also surfaced a bigger problem than originally scoped: **the current MVP Meta Ad Library integration doesn't actually work** — it calls EntityIQ endpoints (`/ads/surface`) that don't exist anywhere in the real `djsteveb/entityiq` repo. See `docs/PHASE-2-BUILD-PLAN.md` for the fix, which is now the top priority, ahead of any net-new Phase 2 feature.
