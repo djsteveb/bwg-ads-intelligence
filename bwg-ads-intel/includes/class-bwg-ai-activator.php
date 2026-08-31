@@ -16,7 +16,7 @@ class BWG_AI_Activator {
 		// Unschedule all plugin crons on deactivation.
 		$hooks = [
 			'bwg_ai_run_discovery',
-			'bwg_ai_poll_entityiq',
+			'bwg_ai_run_ad_surface',
 			'bwg_ai_send_access_followup',
 			'bwg_ai_daily_maintenance',
 		];
@@ -112,7 +112,10 @@ class BWG_AI_Activator {
 				ad_id            VARCHAR(255)   DEFAULT '',
 				ad_copy          LONGTEXT,
 				ad_image_url     VARCHAR(2083)  DEFAULT '',
+				ad_snapshot_url  VARCHAR(2083)  DEFAULT '',
 				screenshot_path  VARCHAR(1024)  DEFAULT '',
+				screenshot_bytes INT UNSIGNED   DEFAULT NULL,
+				source           VARCHAR(16)    NOT NULL DEFAULT 'api',
 				run_dates        VARCHAR(255)   DEFAULT '',
 				spend_range      VARCHAR(128)   DEFAULT '',
 				user_confirmed   TINYINT        NOT NULL DEFAULT 0,
@@ -200,14 +203,17 @@ class BWG_AI_Activator {
 		add_option( 'bwg_ai_email_provider', 'wp_mail' );
 		add_option( 'bwg_ai_from_name', get_bloginfo( 'name' ) );
 		add_option( 'bwg_ai_from_email', get_option( 'admin_email' ) );
-		add_option( 'bwg_ai_entityiq_url', '' );
-		add_option( 'bwg_ai_entityiq_secret', '' );
 		add_option( 'bwg_ai_google_places_key', '' );
+		add_option( 'bwg_ai_meta_ad_library_token', '' );
+		add_option( 'bwg_ai_claude_api_key', '' );
 		add_option( 'bwg_ai_captcha_site_key', '' );
 		add_option( 'bwg_ai_captcha_secret_key', '' );
 		add_option( 'bwg_ai_schedule_url', '' );
 		add_option( 'bwg_ai_storage_warning_gb', 10 );
 		add_option( 'bwg_ai_audit_log_retention_days', 90 );
+		add_option( 'bwg_ai_screenshot_retention_days', 0 ); // 0 = keep indefinitely.
+		add_option( 'bwg_ai_screenshot_api_url', '' );
+		add_option( 'bwg_ai_screenshot_api_key', '' );
 	}
 
 	/**

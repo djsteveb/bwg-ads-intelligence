@@ -55,9 +55,7 @@ class BWG_AI_Admin {
 
 	public function register_settings() {
 		// General.
-		register_setting( 'bwg_ai_general', 'bwg_ai_entityiq_url',     [ 'sanitize_callback' => 'sanitize_url' ] );
-		register_setting( 'bwg_ai_general', 'bwg_ai_entityiq_secret',  [ 'sanitize_callback' => [ $this, 'sanitize_and_encrypt_secret' ] ] );
-		register_setting( 'bwg_ai_general', 'bwg_ai_booking_url',      [ 'sanitize_callback' => 'sanitize_url' ] );
+		register_setting( 'bwg_ai_general', 'bwg_ai_booking_url', [ 'sanitize_callback' => 'sanitize_url' ] );
 
 		// Email.
 		register_setting( 'bwg_ai_email', 'bwg_ai_email_provider',    [ 'sanitize_callback' => [ $this, 'sanitize_email_provider' ] ] );
@@ -70,10 +68,15 @@ class BWG_AI_Admin {
 		register_setting( 'bwg_ai_api', 'bwg_ai_google_places_key',   [ 'sanitize_callback' => [ $this, 'sanitize_and_encrypt_secret' ] ] );
 		register_setting( 'bwg_ai_api', 'bwg_ai_captcha_site_key',    [ 'sanitize_callback' => 'sanitize_text_field' ] );
 		register_setting( 'bwg_ai_api', 'bwg_ai_captcha_secret_key',  [ 'sanitize_callback' => [ $this, 'sanitize_and_encrypt_secret' ] ] );
+		register_setting( 'bwg_ai_api', 'bwg_ai_meta_ad_library_token', [ 'sanitize_callback' => [ $this, 'sanitize_and_encrypt_secret' ] ] );
+		register_setting( 'bwg_ai_api', 'bwg_ai_screenshot_api_url',   [ 'sanitize_callback' => 'sanitize_url' ] );
+		register_setting( 'bwg_ai_api', 'bwg_ai_screenshot_api_key',   [ 'sanitize_callback' => [ $this, 'sanitize_and_encrypt_secret' ] ] );
+		register_setting( 'bwg_ai_api', 'bwg_ai_claude_api_key',       [ 'sanitize_callback' => [ $this, 'sanitize_and_encrypt_secret' ] ] );
 
 		// Storage / Maintenance.
-		register_setting( 'bwg_ai_storage_settings', 'bwg_ai_storage_warning_gb',       [ 'sanitize_callback' => 'absint' ] );
-		register_setting( 'bwg_ai_storage_settings', 'bwg_ai_audit_log_retention_days', [ 'sanitize_callback' => 'absint' ] );
+		register_setting( 'bwg_ai_storage_settings', 'bwg_ai_storage_warning_gb',        [ 'sanitize_callback' => 'absint' ] );
+		register_setting( 'bwg_ai_storage_settings', 'bwg_ai_audit_log_retention_days',  [ 'sanitize_callback' => 'absint' ] );
+		register_setting( 'bwg_ai_storage_settings', 'bwg_ai_screenshot_retention_days', [ 'sanitize_callback' => 'absint' ] );
 	}
 
 	// -------------------------------------------------------------------------
@@ -170,45 +173,50 @@ class BWG_AI_Admin {
 			$from = sanitize_text_field( wp_unslash( $_POST['date_from'] ?? '' ) );
 			$to   = sanitize_text_field( wp_unslash( $_POST['date_to'] ?? '' ) );
 
-			if ( 'export' === $sa ) {
-				$url    = $this->entityiq_storage_export( $from, $to );
-				$notice = $url
-					? '<div class="notice notice-success"><p>Export ready: <a href="' . esc_url( $url ) . '">' . esc_html( $url ) . '</a></p></div>'
-					: '<div class="notice notice-error"><p>Export failed — check EntityIQ connection.</p></div>';
-			} elseif ( 'delete' === $sa ) {
-				$ok     = $this->entityiq_storage_delete( $from, $to );
-				$notice = $ok
-					? '<div class="notice notice-success"><p>Screenshots deleted for selected range.</p></div>'
-					: '<div class="notice notice-error"><p>Delete failed — check EntityIQ connection.</p></div>';
+			if ( 'delete' === $sa ) {
+				$result = BWG_AI_Screenshot_Store::prune_range( $from ?: null, $to ?: null );
+				$notice = '<div class="notice notice-success"><p>' . (int) $result['deleted'] . ' screenshot(s) deleted, freeing ' . esc_html( size_format( $result['bytes_freed'] ) ) . '.</p></div>';
+				BWG_AI_Session::log( null, 'storage_manual_delete', "Deleted {$result['deleted']} screenshots in range {$from}..{$to}." );
+			} elseif ( 'delete_older_than' === $sa ) {
+				$days   = absint( $_POST['days'] ?? 0 );
+				$result = $days > 0 ? BWG_AI_Screenshot_Store::prune_older_than( $days ) : [ 'deleted' => 0, 'bytes_freed' => 0 ];
+				$notice = '<div class="notice notice-success"><p>' . (int) $result['deleted'] . ' screenshot(s) older than ' . (int) $days . ' days deleted, freeing ' . esc_html( size_format( $result['bytes_freed'] ) ) . '.</p></div>';
+				BWG_AI_Session::log( null, 'storage_manual_delete', "Deleted {$result['deleted']} screenshots older than {$days} days." );
 			}
 		}
 
-		$stats = $this->get_storage_stats();
+		// Export download is a GET so it can trigger a file download directly (see handle_storage_export()).
+		$export_url = wp_nonce_url( admin_url( 'admin-post.php?action=bwg_ai_storage_export' ), 'bwg_ai_storage_export' );
+
+		$stats      = BWG_AI_Screenshot_Store::stats();
+		$total_gb   = round( $stats['total_bytes'] / 1e9, 3 );
+		$weekly_gb  = round( $stats['weekly_bytes'] / 1e9, 3 );
+		$threshold  = absint( get_option( 'bwg_ai_storage_warning_gb', 10 ) );
+		$pct        = $threshold > 0 ? min( 100, round( ( $total_gb / $threshold ) * 100 ) ) : 0;
+		$fill_class = $pct >= 90 ? 'critical' : ( $pct >= 70 ? 'warning' : '' );
+		$retention  = absint( get_option( 'bwg_ai_screenshot_retention_days', 0 ) );
 		?>
 		<div class="wrap bwg-ai-wrap">
 			<h1>Ads Intelligence — Storage</h1>
 			<?php echo wp_kses_post( $notice ); ?>
 
-			<?php if ( ! get_option( 'bwg_ai_entityiq_url' ) ) : ?>
-				<div class="notice notice-warning"><p>EntityIQ URL is not configured. <a href="<?php echo esc_url( admin_url( 'admin.php?page=bwg-ai-settings' ) ); ?>">Configure now &rarr;</a></p></div>
-
-			<?php elseif ( ! $stats ) : ?>
-				<div class="notice notice-error"><p>Unable to reach EntityIQ storage API. Verify the URL and shared secret in Settings.</p></div>
-
-			<?php else :
-				$total_gb   = round( ( $stats['total_bytes'] ?? 0 ) / 1e9, 2 );
-				$weekly_gb  = round( ( $stats['weekly_bytes'] ?? 0 ) / 1e9, 2 );
-				$threshold  = absint( get_option( 'bwg_ai_storage_warning_gb', 10 ) );
-				$pct        = $threshold > 0 ? min( 100, round( ( $total_gb / $threshold ) * 100 ) ) : 0;
-				$fill_class = $pct >= 90 ? 'critical' : ( $pct >= 70 ? 'warning' : '' );
-			?>
+			<p style="max-width:700px;color:#50575e;">
+				Screenshots are stored locally on this server (<code>wp-content/uploads/bwg-ai-screenshots/</code>,
+				access-blocked from direct web requests) and served only through short-lived signed links.
+				Meta ads link to Meta's own hosted snapshot instead and don't count toward this total.
+				<?php if ( $retention > 0 ) : ?>
+					Auto-delete is <strong>on</strong>: screenshots older than <?php echo esc_html( $retention ); ?> days are removed by daily maintenance.
+				<?php else : ?>
+					Auto-delete is <strong>off</strong> — screenshots are kept indefinitely unless deleted below. Set a retention window in <a href="<?php echo esc_url( admin_url( 'admin.php?page=bwg-ai-settings&tab=storage' ) ); ?>">Settings &rarr; Storage</a>.
+				<?php endif; ?>
+			</p>
 
 			<div class="bwg-ai-card" style="max-width:700px;">
 				<h3>Disk Usage</h3>
 				<p>
 					<strong><?php echo esc_html( $total_gb ); ?> GB</strong> total
-					&mdash; <strong><?php echo esc_html( $weekly_gb ); ?> GB</strong> this week
-					<?php if ( $threshold ) : ?>(threshold: <?php echo esc_html( $threshold ); ?> GB)<?php endif; ?>
+					&mdash; <strong><?php echo esc_html( $weekly_gb ); ?> GB</strong> in the last 7 days
+					<?php if ( $threshold ) : ?>(warning threshold: <?php echo esc_html( $threshold ); ?> GB)<?php endif; ?>
 				</p>
 				<div class="bwg-ai-usage-bar">
 					<div class="fill <?php echo esc_attr( $fill_class ); ?>" style="width:<?php echo esc_attr( $pct ); ?>%;"></div>
@@ -216,9 +224,8 @@ class BWG_AI_Admin {
 				<p style="font-size:12px;color:#666;margin:0;"><?php echo esc_html( $pct ); ?>% of warning threshold</p>
 
 				<?php
-				$breakdown = $stats['weekly_breakdown'] ?? [];
-				if ( $breakdown ) :
-					$max_bytes = max( array_column( $breakdown, 'bytes' ) ) ?: 1;
+				$breakdown = $stats['weekly_breakdown'];
+				$max_bytes = max( array_column( $breakdown, 'bytes' ) ) ?: 1;
 				?>
 				<h3 style="margin-top:20px;">Last 7 Days</h3>
 				<div class="bwg-ai-bar-chart">
@@ -233,24 +240,24 @@ class BWG_AI_Admin {
 					</div>
 					<?php endforeach; ?>
 				</div>
-				<?php endif; ?>
 			</div>
 
 			<div class="bwg-ai-card" style="max-width:700px;">
-				<h3>Export Screenshots</h3>
-				<form method="post">
-					<?php wp_nonce_field( 'bwg_ai_storage_action' ); ?>
-					<input type="hidden" name="bwg_ai_storage_action" value="export">
+				<h3>Backup / Export Screenshots</h3>
+				<p style="font-size:12px;color:#666;margin-top:0;">Downloads a ZIP of the screenshot files in the selected range plus a CSV manifest (session, platform, ad, path, size, date). Leave both blank to export everything.</p>
+				<form method="get" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+					<input type="hidden" name="action" value="bwg_ai_storage_export">
+					<input type="hidden" name="_wpnonce" value="<?php echo esc_attr( wp_create_nonce( 'bwg_ai_storage_export' ) ); ?>">
 					<table class="form-table" style="margin:0;">
 						<tr><th style="padding:6px 0;"><label for="ef">From</label></th><td><input type="date" id="ef" name="date_from" class="regular-text"></td></tr>
 						<tr><th style="padding:6px 0;"><label for="et">To</label></th><td><input type="date" id="et" name="date_to" class="regular-text" value="<?php echo esc_attr( gmdate( 'Y-m-d' ) ); ?>"></td></tr>
 					</table>
-					<p style="margin-top:12px;"><button type="submit" class="button button-primary">Download ZIP</button></p>
+					<p style="margin-top:12px;"><button type="submit" class="button button-primary">Download ZIP Backup</button></p>
 				</form>
 			</div>
 
 			<div class="bwg-ai-card" style="max-width:700px;">
-				<h3 style="color:#c0392b;">Delete Screenshots</h3>
+				<h3 style="color:#c0392b;">Delete Screenshots by Date Range</h3>
 				<form method="post" id="bwg-ai-del-form">
 					<?php wp_nonce_field( 'bwg_ai_storage_action' ); ?>
 					<input type="hidden" name="bwg_ai_storage_action" value="delete">
@@ -262,10 +269,22 @@ class BWG_AI_Admin {
 				</form>
 			</div>
 
+			<div class="bwg-ai-card" style="max-width:700px;">
+				<h3 style="color:#c0392b;">Delete Screenshots Older Than N Days</h3>
+				<form method="post" id="bwg-ai-del-older-form">
+					<?php wp_nonce_field( 'bwg_ai_storage_action' ); ?>
+					<input type="hidden" name="bwg_ai_storage_action" value="delete_older_than">
+					<label for="days">Older than</label>
+					<input type="number" id="days" name="days" min="1" value="90" class="small-text">
+					days
+					<p style="margin-top:12px;"><button type="button" class="button" onclick="document.getElementById('bwg-ai-del-older-modal').classList.add('open')">Delete&hellip;</button></p>
+				</form>
+			</div>
+
 			<div class="bwg-ai-modal-bg" id="bwg-ai-del-modal">
 				<div class="bwg-ai-modal">
 					<h3 style="color:#c0392b;">Confirm Delete</h3>
-					<p>This permanently removes all screenshots in the selected date range and cannot be undone.</p>
+					<p>This permanently removes all screenshots in the selected date range and cannot be undone. Consider downloading a backup first.</p>
 					<p>
 						<button type="button" class="button button-primary" style="background:#c0392b;border-color:#9b2a1e;"
 							onclick="document.getElementById('bwg-ai-del-form').submit()">Yes, Delete</button>
@@ -274,15 +293,58 @@ class BWG_AI_Admin {
 					</p>
 				</div>
 			</div>
+			<div class="bwg-ai-modal-bg" id="bwg-ai-del-older-modal">
+				<div class="bwg-ai-modal">
+					<h3 style="color:#c0392b;">Confirm Delete</h3>
+					<p>This permanently removes every screenshot older than the number of days entered and cannot be undone. Consider downloading a backup first.</p>
+					<p>
+						<button type="button" class="button button-primary" style="background:#c0392b;border-color:#9b2a1e;"
+							onclick="document.getElementById('bwg-ai-del-older-form').submit()">Yes, Delete</button>
+						&nbsp;
+						<button type="button" class="button" onclick="document.getElementById('bwg-ai-del-older-modal').classList.remove('open')">Cancel</button>
+					</p>
+				</div>
+			</div>
 			<script>
-			document.getElementById('bwg-ai-del-modal').addEventListener('click', function(e){
-				if (e.target === this) this.classList.remove('open');
-			});
+			[ 'bwg-ai-del-modal', 'bwg-ai-del-older-modal' ].forEach( function ( id ) {
+				document.getElementById( id ).addEventListener( 'click', function ( e ) {
+					if ( e.target === this ) this.classList.remove( 'open' );
+				} );
+			} );
 			</script>
-
-			<?php endif; ?>
 		</div>
 		<?php
+	}
+
+	/**
+	 * admin-post.php handler for the ZIP backup download — streams the file
+	 * directly rather than routing through render_storage_page() so it can
+	 * send Content-Disposition: attachment headers.
+	 */
+	public function handle_storage_export() {
+		if ( ! current_user_can( 'manage_options' ) || ! check_admin_referer( 'bwg_ai_storage_export' ) ) {
+			wp_die( esc_html__( 'Insufficient permissions.', 'bwg-ads-intel' ) );
+		}
+
+		$from = isset( $_GET['date_from'] ) ? sanitize_text_field( wp_unslash( $_GET['date_from'] ) ) : '';
+		$to   = isset( $_GET['date_to'] ) ? sanitize_text_field( wp_unslash( $_GET['date_to'] ) ) : '';
+
+		$result = BWG_AI_Screenshot_Store::export_zip( $from ?: null, $to ?: null );
+
+		if ( is_wp_error( $result ) ) {
+			wp_die( esc_html( $result->get_error_message() ) );
+		}
+
+		BWG_AI_Session::log( null, 'storage_export', "Exported {$result['file_count']} screenshots ({$from}..{$to})." );
+
+		nocache_headers();
+		header( 'Content-Type: application/zip' );
+		header( 'Content-Disposition: attachment; filename="' . $result['filename'] . '"' );
+		header( 'Content-Length: ' . filesize( $result['path'] ) );
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_readfile -- streaming a freshly built, path-validated zip.
+		readfile( $result['path'] );
+		wp_delete_file( $result['path'] ); // One-time download artifact — remove after streaming.
+		exit;
 	}
 
 	// -------------------------------------------------------------------------
@@ -320,23 +382,30 @@ class BWG_AI_Admin {
 			) );
 		}
 
-		// Email admin if storage warning threshold exceeded.
-		$stats = $this->get_storage_stats();
-		if ( $stats ) {
-			$total_gb  = ( $stats['total_bytes'] ?? 0 ) / 1e9;
-			$threshold = absint( get_option( 'bwg_ai_storage_warning_gb', 10 ) );
-			if ( $threshold > 0 && $total_gb >= $threshold ) {
-				wp_mail(
-					get_option( 'admin_email' ),
-					'[BWG Ads Intelligence] Storage Warning',
-					sprintf(
-						"Screenshot storage has reached %.2f GB (threshold: %d GB).\n\nManage storage: %s",
-						$total_gb,
-						$threshold,
-						admin_url( 'admin.php?page=bwg-ai-storage' )
-					)
-				);
+		// Auto-delete screenshots past the configured retention window.
+		$retention_days = absint( get_option( 'bwg_ai_screenshot_retention_days', 0 ) );
+		if ( $retention_days > 0 ) {
+			$result = BWG_AI_Screenshot_Store::prune_older_than( $retention_days );
+			if ( $result['deleted'] > 0 ) {
+				BWG_AI_Session::log( null, 'storage_auto_prune', "Daily maintenance deleted {$result['deleted']} screenshots older than {$retention_days} days, freeing " . size_format( $result['bytes_freed'] ) . '.' );
 			}
+		}
+
+		// Email admin if storage warning threshold exceeded.
+		$stats     = BWG_AI_Screenshot_Store::stats();
+		$total_gb  = $stats['total_bytes'] / 1e9;
+		$threshold = absint( get_option( 'bwg_ai_storage_warning_gb', 10 ) );
+		if ( $threshold > 0 && $total_gb >= $threshold ) {
+			wp_mail(
+				get_option( 'admin_email' ),
+				'[BWG Ads Intelligence] Storage Warning',
+				sprintf(
+					"Screenshot storage has reached %.2f GB (threshold: %d GB).\n\nManage storage: %s",
+					$total_gb,
+					$threshold,
+					admin_url( 'admin.php?page=bwg-ai-storage' )
+				)
+			);
 		}
 	}
 
@@ -361,70 +430,6 @@ class BWG_AI_Admin {
 		} else {
 			wp_send_json_error( 'wp_mail() returned false. Check SMTP settings.' );
 		}
-	}
-
-	// -------------------------------------------------------------------------
-	// EntityIQ storage helpers
-	// -------------------------------------------------------------------------
-
-	public function get_storage_stats() {
-		return $this->entityiq_request( 'GET', '/ads/storage/stats' );
-	}
-
-	private function entityiq_storage_export( $from, $to ) {
-		$result = $this->entityiq_request( 'GET', '/ads/storage/export', [
-			'from' => $from,
-			'to'   => $to,
-		] );
-		return $result ? ( $result['download_url'] ?? '' ) : false;
-	}
-
-	private function entityiq_storage_delete( $from, $to ) {
-		return (bool) $this->entityiq_request( 'DELETE', '/ads/storage', [
-			'from' => $from,
-			'to'   => $to,
-		] );
-	}
-
-	private function entityiq_request( $method, $path, $params = [] ) {
-		$base = rtrim( get_option( 'bwg_ai_entityiq_url', '' ), '/' );
-		if ( ! $base ) {
-			return null;
-		}
-
-		$secret = bwg_ai_decrypt_secret( get_option( 'bwg_ai_entityiq_secret', '' ) );
-		$ts     = time();
-		$sig    = hash_hmac( 'sha256', "{$method}:{$path}:{$ts}", $secret );
-
-		$url  = $base . $path;
-		$args = [
-			'method'  => $method,
-			'timeout' => 15,
-			'headers' => [
-				'Content-Type'    => 'application/json',
-				'X-BWG-Signature' => $sig,
-				'X-BWG-Timestamp' => (string) $ts,
-			],
-		];
-
-		if ( 'GET' === $method && $params ) {
-			$url = add_query_arg( array_map( 'sanitize_text_field', $params ), $url );
-		} elseif ( in_array( $method, [ 'POST', 'DELETE' ], true ) && $params ) {
-			$args['body'] = wp_json_encode( $params );
-		}
-
-		$response = wp_remote_request( $url, $args );
-
-		if ( is_wp_error( $response ) ) {
-			return null;
-		}
-
-		$code = wp_remote_retrieve_response_code( $response );
-		if ( $code < 200 || $code >= 300 ) {
-			return null;
-		}
-
-		return json_decode( wp_remote_retrieve_body( $response ), true );
 	}
 
 	// -------------------------------------------------------------------------

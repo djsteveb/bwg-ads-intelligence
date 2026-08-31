@@ -47,6 +47,7 @@ class BWG_AI_Loader {
 			$this->add_action( 'admin_init',             [ $admin, 'register_settings' ] );
 			$this->add_action( 'admin_enqueue_scripts',  [ $admin, 'enqueue_assets' ] );
 			$this->add_action( 'wp_ajax_bwg_ai_test_email', [ $admin, 'handle_test_email_ajax' ] );
+			$this->add_action( 'admin_post_bwg_ai_storage_export', [ $admin, 'handle_storage_export' ] );
 			$this->add_filter( 'plugin_action_links_' . BWG_AI_BASENAME, [ $admin, 'plugin_action_links' ] );
 		}
 
@@ -55,9 +56,8 @@ class BWG_AI_Loader {
 		$this->add_action( 'bwg_ai_run_discovery', [ $discovery, 'run' ] );
 
 		$ad_surface = new BWG_AI_Ad_Surface();
-		$this->add_action( 'bwg_ai_queue_ad_surface',  [ $ad_surface, 'queue_job' ],      10, 2 );
-		$this->add_action( 'bwg_ai_poll_entityiq',     [ $ad_surface, 'poll' ] );
-		$this->add_action( 'bwg_ai_webhook_received',  [ $ad_surface, 'handle_webhook' ], 10, 4 );
+		$this->add_action( 'bwg_ai_queue_ad_surface', [ $ad_surface, 'queue_job' ], 10, 2 );
+		$this->add_action( 'bwg_ai_run_ad_surface',   [ $ad_surface, 'run' ],       10, 2 );
 
 		$email = new BWG_AI_Email();
 		$this->add_action( 'bwg_ai_session_created',       [ $email, 'send_save_spot' ] );

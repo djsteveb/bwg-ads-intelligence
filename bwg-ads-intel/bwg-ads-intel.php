@@ -14,7 +14,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 define( 'BWG_AI_VERSION', '1.0.0' );
-define( 'BWG_AI_DB_VERSION', '1.0.0' );
+define( 'BWG_AI_DB_VERSION', '1.2.0' );
 define( 'BWG_AI_DIR', plugin_dir_path( __FILE__ ) );
 define( 'BWG_AI_URL', plugin_dir_url( __FILE__ ) );
 define( 'BWG_AI_BASENAME', plugin_basename( __FILE__ ) );

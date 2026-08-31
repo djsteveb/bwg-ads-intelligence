@@ -98,20 +98,6 @@ class BWG_AI_Session {
 	}
 
 	/**
-	 * Store the EntityIQ job ID returned when a scrape job is queued.
-	 */
-	public static function update_entityiq_job_id( $session_id, $job_id ) {
-		global $wpdb;
-		$wpdb->update(
-			self::table(),
-			[ 'entityiq_job_id' => sanitize_text_field( $job_id ) ],
-			[ 'id' => absint( $session_id ) ],
-			[ '%s' ],
-			[ '%d' ]
-		);
-	}
-
-	/**
 	 * Rotate the resume token (e.g. after a successful resume to limit reuse).
 	 */
 	public static function rotate_resume_token( $session_id ) {

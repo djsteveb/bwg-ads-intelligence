@@ -161,54 +161,6 @@ class BWG_AI_Security {
 	}
 
 	// -------------------------------------------------------------------------
-	// EntityIQ webhook signature (HMAC-SHA256)
-	// -------------------------------------------------------------------------
-
-	/**
-	 * Verify the HMAC-SHA256 signature on an incoming EntityIQ webhook request.
-	 *
-	 * Expected headers:
-	 *   X-BWG-Signature: sha256=<hex>
-	 *   X-BWG-Timestamp: <unix timestamp>
-	 *
-	 * The signed payload is: raw_body + timestamp.
-	 * Requests older than 5 minutes are rejected to prevent replay attacks.
-	 *
-	 * @param WP_REST_Request $request
-	 * @return true|WP_Error
-	 */
-	public static function verify_webhook_signature( WP_REST_Request $request ) {
-		$secret = bwg_ai_decrypt_secret( get_option( 'bwg_ai_entityiq_secret', '' ) );
-
-		if ( empty( $secret ) ) {
-			return new WP_Error( 'webhook_not_configured', 'Webhook secret not configured.', [ 'status' => 503 ] );
-		}
-
-		$sig_header = $request->get_header( 'X-BWG-Signature' );
-		$timestamp  = $request->get_header( 'X-BWG-Timestamp' );
-
-		if ( ! $sig_header || ! $timestamp ) {
-			return new WP_Error( 'webhook_missing_headers', 'Missing signature headers.', [ 'status' => 401 ] );
-		}
-
-		// Replay protection: reject if timestamp is more than 5 minutes old.
-		if ( abs( time() - (int) $timestamp ) > 300 ) {
-			return new WP_Error( 'webhook_replay', 'Request timestamp out of range.', [ 'status' => 401 ] );
-		}
-
-		$raw_body = $request->get_body();
-		$expected = 'sha256=' . hash_hmac( 'sha256', $raw_body . $timestamp, $secret );
-
-		// Constant-time comparison to prevent timing attacks.
-		if ( ! hash_equals( $expected, $sig_header ) ) {
-			BWG_AI_Session::log( null, 'webhook_sig_fail', 'Webhook signature mismatch.' );
-			return new WP_Error( 'webhook_invalid_sig', 'Invalid webhook signature.', [ 'status' => 401 ] );
-		}
-
-		return true;
-	}
-
-	// -------------------------------------------------------------------------
 	// IP helpers
 	// -------------------------------------------------------------------------
 
@@ -348,4 +300,69 @@ function bwg_ai_get_google_places_key(): string {
 		}
 	}
 	return '';
+}
+
+/**
+ * Resolve the Meta Ad Library (Graph API ads_archive) access token.
+ * Long-lived token from a Meta developer app with the ads_read permission.
+ */
+function bwg_ai_get_meta_ad_library_token(): string {
+	return bwg_ai_decrypt_secret( (string) get_option( 'bwg_ai_meta_ad_library_token', '' ) );
+}
+
+// -------------------------------------------------------------------------
+// Signed screenshot URLs — screenshots live outside the web root's reach
+// (blocked by .htaccess) and are only ever served through the time-limited
+// signed REST URL below, so a leaked ad gallery link can't be replayed
+// indefinitely and file paths are never exposed directly.
+// -------------------------------------------------------------------------
+
+/** How long a signed screenshot URL stays valid, in seconds. */
+const BWG_AI_SCREENSHOT_URL_TTL = 7200;
+
+/**
+ * HMAC over the ad ID + expiry, keyed off the same WP auth salts used for
+ * secret-at-rest encryption. Not a substitute for session ownership checks
+ * elsewhere in the plugin — this only proves the URL wasn't tampered with
+ * and hasn't expired.
+ */
+function bwg_ai_sign_screenshot_url( $ad_id, $expires ) {
+	return hash_hmac( 'sha256', $ad_id . '|' . $expires, bwg_ai_secret_encryption_key() );
+}
+
+/**
+ * Build a signed, time-limited URL for GET /screenshot/{id}.
+ *
+ * @param int $ad_id
+ * @return string
+ */
+function bwg_ai_screenshot_url( $ad_id ) {
+	$ad_id   = absint( $ad_id );
+	$expires = time() + BWG_AI_SCREENSHOT_URL_TTL;
+	$sig     = bwg_ai_sign_screenshot_url( $ad_id, $expires );
+
+	return add_query_arg(
+		[ 'expires' => $expires, 'sig' => $sig ],
+		rest_url( 'bwg/v1/ai/screenshot/' . $ad_id )
+	);
+}
+
+/**
+ * Resolve the generic screenshot-render API endpoint + key (used for Google
+ * Ads Transparency Center captures — Google has no bulk data API like
+ * Meta's ads_archive, so a hosted URL-to-image service renders the page).
+ */
+function bwg_ai_get_screenshot_api_url(): string {
+	return (string) get_option( 'bwg_ai_screenshot_api_url', '' );
+}
+
+function bwg_ai_get_screenshot_api_key(): string {
+	return bwg_ai_decrypt_secret( (string) get_option( 'bwg_ai_screenshot_api_key', '' ) );
+}
+
+/**
+ * Resolve the Anthropic API key used for vision compliance analysis (M13).
+ */
+function bwg_ai_get_claude_api_key(): string {
+	return bwg_ai_decrypt_secret( (string) get_option( 'bwg_ai_claude_api_key', '' ) );
 }

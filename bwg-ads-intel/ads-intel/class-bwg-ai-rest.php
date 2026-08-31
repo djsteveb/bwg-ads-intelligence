@@ -61,6 +61,20 @@ class BWG_AI_Rest {
 			'permission_callback' => [ $this, 'require_nonce' ],
 		] );
 
+		register_rest_route( $ns, $b . '/manual-ads', [
+			'methods'             => 'POST',
+			'callback'            => [ $this, 'manual_ads' ],
+			'permission_callback' => [ $this, 'require_nonce' ],
+		] );
+
+		// Screenshot serving (signed URL auth — no WP nonce, see bwg_ai_screenshot_url()).
+		register_rest_route( $ns, $b . '/screenshot/(?P<id>\d+)', [
+			'methods'             => 'GET',
+			'callback'            => [ $this, 'get_screenshot' ],
+			'permission_callback' => '__return_true',
+			'args'                => [ 'id' => [ 'validate_callback' => 'is_numeric' ] ],
+		] );
+
 		// Phase 5 — Access Funnel
 		register_rest_route( $ns, $b . '/access-status', [
 			'methods'             => 'POST',
@@ -106,13 +120,6 @@ class BWG_AI_Rest {
 		register_rest_route( $ns, $b . '/resume', [
 			'methods'             => 'POST',
 			'callback'            => [ $this, 'resume' ],
-			'permission_callback' => '__return_true',
-		] );
-
-		// EntityIQ webhook (HMAC auth — no WP nonce)
-		register_rest_route( $ns, $b . '/entityiq-webhook', [
-			'methods'             => 'POST',
-			'callback'            => [ $this, 'entityiq_webhook' ],
 			'permission_callback' => '__return_true',
 		] );
 	}
@@ -254,7 +261,7 @@ class BWG_AI_Rest {
 		BWG_AI_Session::update_step( $session->id, 1 );
 		BWG_AI_Session::log( $session->id, 'discovery_confirmed', 'User confirmed discovery data.' );
 
-		// Queue Phase 2 EntityIQ ad surface job (implemented in M5).
+		// Queue Phase 2 Meta Ad Library lookup.
 		do_action( 'bwg_ai_queue_ad_surface', $session->id );
 
 		return new WP_REST_Response( [ 'ok' => true, 'step' => 1 ], 200 );
@@ -278,11 +285,12 @@ class BWG_AI_Rest {
 		);
 
 		return new WP_REST_Response( [
-			'session_id'     => $session->id,
-			'step'           => (int) $session->step_completed,
-			'status'         => $session->status,
-			'entityiq_job_id'=> $session->entityiq_job_id,
-			'ads_found'      => $ad_count,
+			'session_id'        => $session->id,
+			'step'              => (int) $session->step_completed,
+			'status'            => $session->status,
+			'ads_found'         => $ad_count,
+			'meta_configured'   => BWG_AI_Meta_Ad_Library::is_configured(),
+			'google_configured' => BWG_AI_Google_Transparency::is_configured(),
 		], 200 );
 	}
 
@@ -298,8 +306,8 @@ class BWG_AI_Rest {
 		global $wpdb;
 		$ads = $wpdb->get_results(
 			$wpdb->prepare(
-				"SELECT id, platform, ad_id, ad_copy, ad_image_url, screenshot_path,
-				        run_dates, spend_range, user_confirmed, compliance_flags
+				"SELECT id, platform, ad_id, ad_copy, ad_image_url, ad_snapshot_url, screenshot_path,
+				        run_dates, spend_range, user_confirmed, compliance_flags, vision_analysis, source
 				 FROM `{$wpdb->prefix}bwg_ai_ads`
 				 WHERE session_id = %d
 				 ORDER BY platform, id",
@@ -309,10 +317,62 @@ class BWG_AI_Rest {
 
 		$formatted = array_map( function ( $ad ) {
 			$ad->compliance_flags = json_decode( $ad->compliance_flags, true ) ?? [];
+			$ad->screenshot_url   = $ad->screenshot_path ? bwg_ai_screenshot_url( $ad->id ) : '';
+			$vision                = json_decode( $ad->vision_analysis, true );
+			$ad->vision_analyzed   = ! empty( $vision['analyzed'] );
+			unset( $ad->vision_analysis, $ad->screenshot_path );
 			return $ad;
 		}, $ads );
 
 		return new WP_REST_Response( [ 'session_id' => $session->id, 'ads' => $formatted ], 200 );
+	}
+
+	/**
+	 * GET /screenshot/{id}
+	 * Streams a stored screenshot file. Auth is a short-lived HMAC-signed
+	 * URL (see bwg_ai_screenshot_url()) rather than a WP nonce, since this
+	 * is loaded directly by <img> tags that can't attach custom headers.
+	 */
+	public function get_screenshot( WP_REST_Request $request ) {
+		$ad_id   = absint( $request->get_param( 'id' ) );
+		$expires = absint( $request->get_param( 'expires' ) );
+		$sig     = sanitize_text_field( (string) $request->get_param( 'sig' ) );
+
+		if ( ! $ad_id || ! $expires || ! $sig ) {
+			return $this->error( 'invalid_request', 'Missing signature.', 400 );
+		}
+		if ( $expires < time() ) {
+			return $this->error( 'link_expired', 'This screenshot link has expired.', 410 );
+		}
+		if ( ! hash_equals( bwg_ai_sign_screenshot_url( $ad_id, $expires ), $sig ) ) {
+			return $this->error( 'invalid_signature', 'Invalid signature.', 403 );
+		}
+
+		global $wpdb;
+		$path = $wpdb->get_var(
+			$wpdb->prepare(
+				"SELECT screenshot_path FROM `{$wpdb->prefix}bwg_ai_ads` WHERE id = %d LIMIT 1",
+				$ad_id
+			)
+		);
+
+		$full = $path ? BWG_AI_Screenshot_Store::full_path( $path ) : false;
+		if ( ! $full ) {
+			return $this->error( 'not_found', 'Screenshot not found.', 404 );
+		}
+
+		$filetype = wp_check_filetype( $full );
+		$mime     = $filetype['type'] ?: 'application/octet-stream';
+
+		nocache_headers();
+		header( 'Content-Type: ' . $mime );
+		header( 'Content-Length: ' . filesize( $full ) );
+		header( 'X-Content-Type-Options: nosniff' );
+		header( 'Content-Disposition: inline' );
+
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_readfile -- streaming a local, path-validated image file.
+		readfile( $full );
+		exit;
 	}
 
 	/**
@@ -367,7 +427,7 @@ class BWG_AI_Rest {
 			return $this->error( 'invalid_data', 'accounts must be a non-empty array.', 400 );
 		}
 
-		// Sanitize and store hints for next EntityIQ pass.
+		// Sanitize and store hints for next Meta Ad Library pass.
 		$hints = [];
 		foreach ( $accounts as $acct ) {
 			$hints[] = [
@@ -378,10 +438,42 @@ class BWG_AI_Rest {
 
 		BWG_AI_Session::log( $session->id, 'accounts_added', 'Additional accounts submitted.', [ 'accounts' => $hints ] );
 
-		// Trigger another EntityIQ surface job with the new hints (M5).
+		// Trigger another Meta Ad Library lookup with the new hints.
 		do_action( 'bwg_ai_queue_ad_surface', $session->id, $hints );
 
 		return new WP_REST_Response( [ 'ok' => true, 'queued' => count( $hints ) ], 200 );
+	}
+
+	/**
+	 * POST /manual-ads
+	 * Saves ads the user pasted in by hand (Ad Library snapshot URL + optional
+	 * copy) — the fallback path when no Meta Ad Library token is configured.
+	 */
+	public function manual_ads( WP_REST_Request $request ) {
+		$session_id = absint( $request->get_param( 'session_id' ) );
+		$session    = $this->get_session_or_error( $session_id, $request );
+		if ( is_wp_error( $session ) ) {
+			return $session;
+		}
+
+		$entries  = $request->get_param( 'ads' ); // [ { ad_snapshot_url, ad_copy? } ]
+		$platform = sanitize_text_field( $request->get_param( 'platform' ) ?: 'meta' );
+		if ( ! in_array( $platform, [ 'meta', 'google' ], true ) ) {
+			return $this->error( 'invalid_platform', 'Invalid platform.', 400 );
+		}
+		if ( ! is_array( $entries ) || empty( $entries ) ) {
+			return $this->error( 'invalid_data', 'ads must be a non-empty array.', 400 );
+		}
+
+		if ( count( $entries ) > 25 ) {
+			return $this->error( 'too_many', 'Please submit 25 ads or fewer at a time.', 400 );
+		}
+
+		$saved = ( new BWG_AI_Ad_Surface() )->save_manual_ads( $session->id, $platform, $entries );
+
+		BWG_AI_Session::log( $session->id, 'manual_ads_submitted', "{$saved} manually entered ads saved." );
+
+		return new WP_REST_Response( [ 'ok' => true, 'saved' => $saved ], 200 );
 	}
 
 	/**
@@ -578,8 +670,32 @@ class BWG_AI_Rest {
 			$whats_working     = isset( $report_data['whats_working'] )     ? (array)  $report_data['whats_working']     : [];
 			$flag_counts       = isset( $report_data['flag_counts'] )       ? (array)  $report_data['flag_counts']       : [ 'high' => 0, 'medium' => 0, 'low' => 0 ];
 			$total_ads         = isset( $report_data['total_ads'] )         ? (int)    $report_data['total_ads']         : 0;
+			$audience          = isset( $report_data['audience'] )          ? (string) $report_data['audience']          : 'executive';
+			$audience_label    = isset( $report_data['audience_label'] )    ? (string) $report_data['audience_label']    : 'Executive / Owner';
+			$audience_data     = isset( $report_data['audience_data'] )     ? (array)  $report_data['audience_data']     : [];
 			$generated_at      = $report->generated_at;
 			$report_token      = $token;
+
+			// Sibling audience reports for the same session, so the page can
+			// link between all 5 views without exposing anything beyond what
+			// this token's holder is already meant to see (same prospect).
+			$sibling_rows = $wpdb->get_results(
+				$wpdb->prepare(
+					"SELECT audience_type, report_token FROM `{$wpdb->prefix}bwg_ai_reports`
+					 WHERE session_id = %d AND (expires_at IS NULL OR expires_at > %s)
+					 ORDER BY FIELD(audience_type, 'executive','marketing','compliance','agency','admissions')",
+					$report->session_id,
+					gmdate( 'Y-m-d H:i:s' )
+				)
+			);
+			$sibling_reports = array_map( static function ( $row ) {
+				return [
+					'audience' => $row->audience_type,
+					'label'    => BWG_AI_Report::AUDIENCES[ $row->audience_type ] ?? ucfirst( $row->audience_type ),
+					'token'    => $row->report_token,
+					'url'      => rest_url( 'bwg/v1/ai/report/' . $row->report_token ),
+				];
+			}, $sibling_rows );
 
 			$template = BWG_AI_DIR . 'admin/partials/report-template.php';
 			if ( file_exists( $template ) ) {
@@ -604,7 +720,9 @@ class BWG_AI_Rest {
 
 	/**
 	 * POST /email-report
-	 * Generates the executive report and emails the link to the session owner.
+	 * Generates all 5 audience reports and emails the executive link to the
+	 * session owner — the report page itself links to the other 4 audience
+	 * views (see BWG_AI_Report::AUDIENCES).
 	 */
 	public function email_report( WP_REST_Request $request ) {
 		$session_id = absint( $request->get_param( 'session_id' ) );
@@ -613,11 +731,12 @@ class BWG_AI_Rest {
 			return $session;
 		}
 
-		$token = BWG_AI_Report::generate( $session->id );
-		if ( is_wp_error( $token ) ) {
-			return $token;
+		$tokens = BWG_AI_Report::generate_all( $session->id );
+		if ( is_wp_error( $tokens ) ) {
+			return $tokens;
 		}
 
+		$token      = $tokens['executive'];
 		$report_url = rest_url( 'bwg/v1/ai/report/' . $token );
 
 		if ( class_exists( 'BWG_AI_Email' ) ) {
@@ -625,12 +744,13 @@ class BWG_AI_Rest {
 		}
 
 		BWG_AI_Session::update_step( $session->id, 5 );
-		BWG_AI_Session::log( $session->id, 'report_emailed', "Token: {$token}" );
+		BWG_AI_Session::log( $session->id, 'report_emailed', "Executive token: {$token} (" . count( $tokens ) . ' audience reports generated).' );
 
 		return new WP_REST_Response( [
 			'ok'         => true,
 			'token'      => $token,
 			'report_url' => $report_url,
+			'tokens'     => $tokens,
 		], 200 );
 	}
 
@@ -701,38 +821,6 @@ class BWG_AI_Rest {
 			'website_url'  => $session->website_url,
 			'discovered'   => $discovered ? $this->format_discovered( $discovered ) : null,
 		], 200 );
-	}
-
-	/**
-	 * POST /entityiq-webhook
-	 * Called by EntityIQ when an ad surface job completes.
-	 */
-	public function entityiq_webhook( WP_REST_Request $request ) {
-		$verified = BWG_AI_Security::verify_webhook_signature( $request );
-		if ( is_wp_error( $verified ) ) {
-			return $verified;
-		}
-
-		$payload    = $request->get_json_params();
-		$session_id = absint( $payload['session_id'] ?? 0 );
-		$job_id     = sanitize_text_field( $payload['job_id'] ?? '' );
-		$ads        = $payload['ads'] ?? [];
-
-		if ( ! $session_id ) {
-			return $this->error( 'invalid_payload', 'Missing session_id.', 400 );
-		}
-
-		$session = BWG_AI_Session::get( $session_id );
-		if ( ! $session ) {
-			return $this->error( 'session_not_found', 'Session not found.', 404 );
-		}
-
-		// Delegate to Ad Surface handler (M5 fills this out).
-		do_action( 'bwg_ai_webhook_received', $session_id, $job_id, $ads, $payload );
-
-		BWG_AI_Session::log( $session_id, 'webhook_received', "EntityIQ job {$job_id} — " . count( $ads ) . ' ads.' );
-
-		return new WP_REST_Response( [ 'ok' => true ], 200 );
 	}
 
 	// -------------------------------------------------------------------------

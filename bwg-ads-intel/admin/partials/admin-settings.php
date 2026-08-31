@@ -51,24 +51,6 @@ function bwg_ai_settings_general() {
 		<?php settings_fields( 'bwg_ai_general' ); ?>
 		<table class="form-table">
 			<tr>
-				<th scope="row"><label for="bwg_ai_entityiq_url">EntityIQ URL</label></th>
-				<td>
-					<input type="url" id="bwg_ai_entityiq_url" name="bwg_ai_entityiq_url"
-					       value="<?php echo esc_attr( get_option( 'bwg_ai_entityiq_url', '' ) ); ?>"
-					       class="regular-text" placeholder="https://entityiq.example.com">
-					<p class="description">Base URL of the EntityIQ Node.js service (no trailing slash).</p>
-				</td>
-			</tr>
-			<tr>
-				<th scope="row"><label for="bwg_ai_entityiq_secret">EntityIQ Shared Secret</label></th>
-				<td>
-					<input type="password" id="bwg_ai_entityiq_secret" name="bwg_ai_entityiq_secret"
-					       value="<?php echo esc_attr( bwg_ai_decrypt_secret( get_option( 'bwg_ai_entityiq_secret', '' ) ) ); ?>"
-					       class="regular-text" autocomplete="new-password">
-					<p class="description">HMAC-SHA256 secret. Must match <code>BWG_WEBHOOK_SECRET</code> in the EntityIQ <code>.env</code>.</p>
-				</td>
-			</tr>
-			<tr>
 				<th scope="row"><label for="bwg_ai_booking_url">Booking / Schedule URL</label></th>
 				<td>
 					<input type="url" id="bwg_ai_booking_url" name="bwg_ai_booking_url"
@@ -238,6 +220,41 @@ function bwg_ai_settings_api() {
 				</td>
 			</tr>
 			<tr>
+				<th scope="row"><label for="bwg_ai_meta_ad_library_token">Meta Ad Library Token</label></th>
+				<td>
+					<input type="password" id="bwg_ai_meta_ad_library_token" name="bwg_ai_meta_ad_library_token"
+					       value="<?php echo esc_attr( bwg_ai_decrypt_secret( get_option( 'bwg_ai_meta_ad_library_token', '' ) ) ); ?>"
+					       class="regular-text" autocomplete="new-password">
+					<p class="description">Long-lived access token from a Meta developer app with the <code>ads_read</code> permission. Used to query the Ad Library <code>ads_archive</code> endpoint directly. Leave blank to fall back to manual ad entry.</p>
+				</td>
+			</tr>
+			<tr>
+				<th scope="row"><label for="bwg_ai_screenshot_api_url">Screenshot API Endpoint</label></th>
+				<td>
+					<input type="url" id="bwg_ai_screenshot_api_url" name="bwg_ai_screenshot_api_url"
+					       value="<?php echo esc_attr( get_option( 'bwg_ai_screenshot_api_url', '' ) ); ?>"
+					       class="regular-text" placeholder="https://api.screenshotprovider.example/v1/take">
+					<p class="description">Used to render Google Ads Transparency Center pages (there's no bulk data API for it, unlike Meta). Any provider whose endpoint accepts <code>?url=&amp;access_key=</code> and returns image bytes works (e.g. ScreenshotOne, ApiFlash, urlbox.io). Leave blank to fall back to manual ad entry for Google.</p>
+				</td>
+			</tr>
+			<tr>
+				<th scope="row"><label for="bwg_ai_screenshot_api_key">Screenshot API Key</label></th>
+				<td>
+					<input type="password" id="bwg_ai_screenshot_api_key" name="bwg_ai_screenshot_api_key"
+					       value="<?php echo esc_attr( bwg_ai_decrypt_secret( get_option( 'bwg_ai_screenshot_api_key', '' ) ) ); ?>"
+					       class="regular-text" autocomplete="new-password">
+				</td>
+			</tr>
+			<tr>
+				<th scope="row"><label for="bwg_ai_claude_api_key">Claude (Anthropic) API Key</label></th>
+				<td>
+					<input type="password" id="bwg_ai_claude_api_key" name="bwg_ai_claude_api_key"
+					       value="<?php echo esc_attr( bwg_ai_decrypt_secret( get_option( 'bwg_ai_claude_api_key', '' ) ) ); ?>"
+					       class="regular-text" autocomplete="new-password">
+					<p class="description">Used for vision compliance analysis of ad creative (HIPAA-focused review of images/screenshots). Leave blank to skip vision analysis — text compliance checks still run either way.</p>
+				</td>
+			</tr>
+			<tr>
 				<th scope="row"><label for="bwg_ai_captcha_site_key">Cloudflare Turnstile Site Key</label></th>
 				<td>
 					<input type="text" id="bwg_ai_captcha_site_key" name="bwg_ai_captcha_site_key"
@@ -280,6 +297,15 @@ function bwg_ai_settings_storage() {
 					       value="<?php echo esc_attr( get_option( 'bwg_ai_audit_log_retention_days', 90 ) ); ?>"
 					       min="7" class="small-text">
 					<p class="description">Audit log rows older than this are pruned by daily maintenance. Minimum 7 days.</p>
+				</td>
+			</tr>
+			<tr>
+				<th scope="row"><label for="bwg_ai_screenshot_retention_days">Screenshot Retention (days)</label></th>
+				<td>
+					<input type="number" id="bwg_ai_screenshot_retention_days" name="bwg_ai_screenshot_retention_days"
+					       value="<?php echo esc_attr( get_option( 'bwg_ai_screenshot_retention_days', 0 ) ); ?>"
+					       min="0" class="small-text">
+					<p class="description">Screenshots older than this are automatically deleted by daily maintenance (file + DB record). <strong>0 = keep indefinitely</strong> (delete manually from the Storage page instead). Doesn't affect Meta ads, which link to Meta's own hosted snapshot rather than a stored screenshot.</p>
 				</td>
 			</tr>
 		</table>

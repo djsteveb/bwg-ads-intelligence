@@ -11,23 +11,48 @@ class BWG_AI_Ad_Surface {
 	// -------------------------------------------------------------------------
 
 	/**
-	 * Queue an EntityIQ ad surface job after Phase 1 confirm.
+	 * Queue a Meta Ad Library lookup after Phase 1 confirm.
 	 *
 	 * Hooked to: bwg_ai_queue_ad_surface (args: session_id, hints=[])
+	 *
+	 * Schedules the actual API call a couple of seconds out via WP-Cron so the
+	 * REST request that triggered this (POST /confirm-discovery or
+	 * POST /add-accounts) doesn't block on an outbound HTTP call to Meta.
 	 *
 	 * @param int   $session_id
 	 * @param array $hints  Extra account identifiers added by the user.
 	 */
 	public function queue_job( $session_id, $hints = [] ) {
 		$session_id = absint( $session_id );
-		$session    = BWG_AI_Session::get( $session_id );
-		if ( ! $session ) {
+		if ( ! BWG_AI_Session::get( $session_id ) ) {
 			return;
 		}
 
-		$entityiq_url = get_option( 'bwg_ai_entityiq_url', '' );
-		if ( ! $entityiq_url ) {
-			BWG_AI_Session::log( $session_id, 'entityiq_skip', 'EntityIQ URL not configured — skipping ad surface job.' );
+		BWG_AI_Session::log( $session_id, 'ad_surface_queued', 'Meta Ad Library lookup scheduled.' );
+		wp_schedule_single_event( time() + 2, 'bwg_ai_run_ad_surface', [ $session_id, $hints ] );
+	}
+
+	/**
+	 * Run the Meta + Google ad surface lookups and save results.
+	 *
+	 * Hooked to: bwg_ai_run_ad_surface (args: session_id, hints=[])
+	 *
+	 * Each platform is independent — a platform with no credential
+	 * configured is skipped (logged) rather than blocking the other, and the
+	 * front-end offers manual entry per-platform for whichever wasn't
+	 * automated.
+	 *
+	 * @param int   $session_id
+	 * @param array $hints
+	 */
+	public function run( $session_id, $hints = [] ) {
+		if ( ! wp_doing_cron() ) {
+			return;
+		}
+
+		$session_id = absint( $session_id );
+		$session    = BWG_AI_Session::get( $session_id );
+		if ( ! $session ) {
 			return;
 		}
 
@@ -39,116 +64,63 @@ class BWG_AI_Ad_Surface {
 			)
 		);
 
-		$payload = wp_json_encode( [
-			'session_id'       => $session_id,
-			'website_url'      => $session->website_url,
-			'platforms'        => [ 'meta' ],
-			'advertiser_hints' => $this->build_hints( $session, $discovered, $hints ),
-		] );
+		$built_hints = $this->build_hints( $session, $discovered, $hints );
 
-		$response = $this->post_to_entityiq( '/ads/surface', $payload );
-
-		if ( is_wp_error( $response ) ) {
-			BWG_AI_Session::log( $session_id, 'entityiq_error', 'Could not reach EntityIQ: ' . $response->get_error_message() );
-			BWG_AI_Session::update_status( $session_id, 'error' );
-			return;
-		}
-
-		$code = (int) wp_remote_retrieve_response_code( $response );
-		$body = json_decode( wp_remote_retrieve_body( $response ), true );
-
-		if ( 202 !== $code || empty( $body['job_id'] ) ) {
-			BWG_AI_Session::log( $session_id, 'entityiq_error', "Unexpected response {$code} from EntityIQ surface endpoint." );
-			BWG_AI_Session::update_status( $session_id, 'error' );
-			return;
-		}
-
-		$job_id = sanitize_text_field( $body['job_id'] );
-		BWG_AI_Session::update_entityiq_job_id( $session_id, $job_id );
-		BWG_AI_Session::log( $session_id, 'entityiq_job_queued', "EntityIQ job queued: {$job_id}" );
-
-		// Schedule a backup poll in 30s in case the webhook never arrives.
-		if ( ! wp_next_scheduled( 'bwg_ai_poll_entityiq', [ $session_id ] ) ) {
-			wp_schedule_single_event( time() + 30, 'bwg_ai_poll_entityiq', [ $session_id ] );
-		}
-	}
-
-	/**
-	 * Poll EntityIQ for job completion. Called by cron every 30s as a backup
-	 * to the webhook — the webhook is the primary completion signal.
-	 *
-	 * Hooked to: bwg_ai_poll_entityiq (arg: session_id)
-	 *
-	 * @param int $session_id
-	 */
-	public function poll( $session_id ) {
-		if ( ! wp_doing_cron() ) {
-			return;
-		}
-
-		$session_id = absint( $session_id );
-		$session    = BWG_AI_Session::get( $session_id );
-
-		if ( ! $session || ! $session->entityiq_job_id ) {
-			return;
-		}
-
-		// Session already past ad surface step — webhook already handled it.
-		if ( (int) $session->step_completed >= 2 ) {
-			return;
-		}
-
-		$response = $this->get_from_entityiq( '/ads/surface/' . rawurlencode( $session->entityiq_job_id ) );
-
-		if ( is_wp_error( $response ) ) {
-			BWG_AI_Session::log( $session_id, 'entityiq_poll_error', $response->get_error_message() );
-			wp_schedule_single_event( time() + 30, 'bwg_ai_poll_entityiq', [ $session_id ] );
-			return;
-		}
-
-		$body   = json_decode( wp_remote_retrieve_body( $response ), true );
-		$status = $body['status'] ?? 'unknown';
-
-		if ( 'complete' === $status ) {
-			$this->save_ads( $session_id, $session->entityiq_job_id, $body['ads'] ?? [] );
-
-		} elseif ( 'error' === $status ) {
-			BWG_AI_Session::update_status( $session_id, 'error' );
-			BWG_AI_Session::log( $session_id, 'entityiq_job_error', $body['error'] ?? 'EntityIQ job failed.' );
-
+		if ( BWG_AI_Meta_Ad_Library::is_configured() ) {
+			$result = BWG_AI_Meta_Ad_Library::search( $built_hints );
+			if ( is_wp_error( $result ) ) {
+				BWG_AI_Session::log( $session_id, 'meta_api_error', 'Meta Ad Library lookup failed: ' . $result->get_error_message() );
+			} else {
+				$this->save_ads( $session_id, $result, 'api' );
+			}
 		} else {
-			// Still running — reschedule.
-			wp_schedule_single_event( time() + 30, 'bwg_ai_poll_entityiq', [ $session_id ] );
+			BWG_AI_Session::log( $session_id, 'meta_token_missing', 'Meta Ad Library token not configured — falling back to manual ad entry.' );
+		}
+
+		if ( BWG_AI_Google_Transparency::is_configured() ) {
+			$result = BWG_AI_Google_Transparency::search( $session_id, $built_hints );
+			if ( is_wp_error( $result ) ) {
+				BWG_AI_Session::log( $session_id, 'google_render_error', 'Google Ads Transparency capture failed: ' . $result->get_error_message() );
+			} else {
+				$this->save_ads( $session_id, $result, 'api' );
+			}
+		} else {
+			BWG_AI_Session::log( $session_id, 'google_render_not_configured', 'Screenshot API not configured — falling back to manual Google ad entry.' );
 		}
 	}
 
 	/**
-	 * Handle the EntityIQ webhook callback.
-	 *
-	 * HMAC signature is already verified by the REST endpoint before this action fires.
-	 * Hooked to: bwg_ai_webhook_received (args: session_id, job_id, ads, payload)
+	 * Save ads submitted through the manual-entry flow (used when no
+	 * automated lookup is configured for a platform, or when the user wants
+	 * to add ads the search missed). Each entry is a pasted Ad Library /
+	 * Transparency Center URL with optional ad copy the user typed in.
 	 *
 	 * @param int    $session_id
-	 * @param string $job_id
-	 * @param array  $ads
-	 * @param array  $payload  Full webhook payload (available for future extensions).
+	 * @param string $platform  'meta' or 'google'.
+	 * @param array  $entries   [ { ad_snapshot_url, ad_copy? } ]
+	 * @return int  Number of ads saved.
 	 */
-	public function handle_webhook( $session_id, $job_id, $ads, $payload ) {
+	public function save_manual_ads( $session_id, $platform, array $entries ) {
 		$session_id = absint( $session_id );
-		$job_id     = sanitize_text_field( $job_id );
+		$platform   = in_array( $platform, [ 'meta', 'google' ], true ) ? $platform : 'meta';
+		$normalized = [];
 
-		$session = BWG_AI_Session::get( $session_id );
-		if ( ! $session ) {
-			return;
+		foreach ( $entries as $entry ) {
+			$snapshot_url = esc_url_raw( $entry['ad_snapshot_url'] ?? '' );
+			if ( ! $snapshot_url ) {
+				continue;
+			}
+			$normalized[] = [
+				'platform'        => $platform,
+				'ad_id'           => md5( $session_id . '|' . $platform . '|' . $snapshot_url ),
+				'ad_copy'         => sanitize_textarea_field( $entry['ad_copy'] ?? '' ),
+				'ad_snapshot_url' => $snapshot_url,
+				'run_dates'       => '',
+				'spend_range'     => '',
+			];
 		}
 
-		// Avoid double-processing if the backup poll cron already handled this.
-		if ( (int) $session->step_completed >= 2 ) {
-			BWG_AI_Session::log( $session_id, 'webhook_duplicate', "Webhook for job {$job_id} ignored — ads already saved." );
-			return;
-		}
-
-		$this->save_ads( $session_id, $job_id, (array) $ads );
+		return $this->save_ads( $session_id, $normalized, 'manual' );
 	}
 
 	// -------------------------------------------------------------------------
@@ -156,46 +128,77 @@ class BWG_AI_Ad_Surface {
 	// -------------------------------------------------------------------------
 
 	/**
-	 * Persist ads from EntityIQ, run compliance on each, advance session step,
-	 * cancel the backup poll cron, and fire the ads-preview drip email.
+	 * Persist ads, run compliance on each, advance session step, and fire the
+	 * ads-preview drip email.
 	 *
 	 * @param int    $session_id
-	 * @param string $job_id
-	 * @param array  $ads  Normalized ad objects from EntityIQ.
+	 * @param array  $ads     Normalized ad objects.
+	 * @param string $source  'api' or 'manual'.
+	 * @return int  Number of ads saved.
 	 */
-	private function save_ads( $session_id, $job_id, $ads ) {
+	private function save_ads( $session_id, $ads, $source = 'api' ) {
 		global $wpdb;
 		$table = $wpdb->prefix . 'bwg_ai_ads';
 		$saved = 0;
 
 		foreach ( $ads as $ad ) {
-			$platform     = sanitize_text_field( $ad['platform'] ?? 'meta' );
-			$ad_id_ext    = sanitize_text_field( $ad['ad_id'] ?? '' );
-			$ad_copy      = sanitize_textarea_field( $ad['ad_copy'] ?? '' );
-			$ad_image_url = esc_url_raw( $ad['ad_image_url'] ?? '' );
-			$screenshot   = sanitize_text_field( $ad['screenshot_path'] ?? '' );
-			$run_dates    = sanitize_text_field( $ad['run_dates'] ?? '' );
-			$spend_range  = sanitize_text_field( $ad['spend_range'] ?? '' );
+			$platform         = sanitize_text_field( $ad['platform'] ?? 'meta' );
+			$ad_id_ext        = sanitize_text_field( $ad['ad_id'] ?? '' );
+			$advertiser_id    = sanitize_text_field( $ad['advertiser_id'] ?? '' );
+			$ad_copy          = sanitize_textarea_field( $ad['ad_copy'] ?? '' );
+			$snapshot_url     = esc_url_raw( $ad['ad_snapshot_url'] ?? '' );
+			$screenshot_path  = sanitize_text_field( $ad['screenshot_path'] ?? '' );
+			$screenshot_bytes = isset( $ad['screenshot_bytes'] ) ? absint( $ad['screenshot_bytes'] ) : null;
+			$run_dates        = sanitize_text_field( $ad['run_dates'] ?? '' );
+			$spend_range      = sanitize_text_field( $ad['spend_range'] ?? '' );
 
-			// Run text compliance. BWG_AI_Compliance::analyze_ad_copy() is
-			// implemented in M6; until then this returns an empty array.
-			$flags = $this->run_compliance( $ad_copy, $platform );
+			$flags = array_map( static function ( $f ) {
+				$f['source'] = $f['source'] ?? 'text';
+				return $f;
+			}, $this->run_compliance( $ad_copy, $platform ) );
+
+			// Vision compliance (M13) — best-effort, never blocks saving.
+			// May also capture a screenshot of a Meta ad_snapshot_url page
+			// (via the render provider) when nothing was captured already,
+			// so vision gets an image to look at.
+			$vision_analysis = [ 'analyzed' => false, 'reason' => 'not_configured', 'flags' => [] ];
+			if ( class_exists( 'BWG_AI_Vision' ) && BWG_AI_Vision::is_configured() ) {
+				$ad_for_vision = $ad;
+				if ( $screenshot_path ) {
+					$ad_for_vision['screenshot_path'] = $screenshot_path;
+				}
+				$vision_analysis = BWG_AI_Vision::analyze( $session_id, $platform, $ad_for_vision );
+
+				if ( ! empty( $vision_analysis['flags'] ) ) {
+					$flags = array_merge( $flags, $vision_analysis['flags'] );
+				}
+				if ( ! $screenshot_path && ! empty( $vision_analysis['screenshot_path'] ) ) {
+					$screenshot_path  = sanitize_text_field( $vision_analysis['screenshot_path'] );
+					$screenshot_bytes = absint( $vision_analysis['screenshot_bytes'] ?? 0 );
+				}
+				// Don't duplicate the (already large) raw file paths back into the JSON blob.
+				unset( $vision_analysis['screenshot_path'], $vision_analysis['screenshot_bytes'] );
+			}
 
 			$wpdb->insert(
 				$table,
 				[
 					'session_id'       => $session_id,
 					'platform'         => $platform,
+					'advertiser_id'    => $advertiser_id,
 					'ad_id'            => $ad_id_ext,
 					'ad_copy'          => $ad_copy,
-					'ad_image_url'     => $ad_image_url,
-					'screenshot_path'  => $screenshot,
+					'ad_snapshot_url'  => $snapshot_url,
+					'screenshot_path'  => $screenshot_path,
+					'screenshot_bytes' => $screenshot_bytes,
 					'run_dates'        => $run_dates,
 					'spend_range'      => $spend_range,
 					'compliance_flags' => wp_json_encode( $flags ),
+					'vision_analysis'  => wp_json_encode( $vision_analysis ),
 					'user_confirmed'   => 0,
+					'source'           => $source,
 				],
-				[ '%d', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%d' ]
+				[ '%d', '%s', '%s', '%s', '%s', '%s', '%s', '%d', '%s', '%s', '%s', '%s', '%d', '%s' ]
 			);
 
 			if ( $wpdb->insert_id ) {
@@ -203,20 +206,20 @@ class BWG_AI_Ad_Surface {
 			}
 		}
 
-		// Cancel backup poll cron — job is resolved.
-		$ts = wp_next_scheduled( 'bwg_ai_poll_entityiq', [ $session_id ] );
-		if ( $ts ) {
-			wp_unschedule_event( $ts, 'bwg_ai_poll_entityiq', [ $session_id ] );
+		if ( $saved > 0 && (int) BWG_AI_Session::get( $session_id )->step_completed < 2 ) {
+			BWG_AI_Session::update_step( $session_id, 2 );
 		}
 
-		BWG_AI_Session::update_step( $session_id, 2 );
-		BWG_AI_Session::log( $session_id, 'ads_saved', "{$saved} ads saved from EntityIQ job {$job_id}." );
+		BWG_AI_Session::log( $session_id, 'ads_saved', "{$saved} ads saved (source: {$source})." );
 
-		// Fire the ads-preview email so the prospect knows results are ready.
-		$session = BWG_AI_Session::get( $session_id );
-		if ( $session ) {
-			( new BWG_AI_Email() )->send_ads_preview( $session, $saved );
+		if ( $saved > 0 ) {
+			$session = BWG_AI_Session::get( $session_id );
+			if ( $session && class_exists( 'BWG_AI_Email' ) ) {
+				( new BWG_AI_Email() )->send_ads_preview( $session, $saved );
+			}
 		}
+
+		return $saved;
 	}
 
 	/**
@@ -234,7 +237,7 @@ class BWG_AI_Ad_Surface {
 	/**
 	 * Build the advertiser_hints payload from discovered data + any user extras.
 	 */
-	private function build_hints( $session, $discovered, $extra_hints = [] ) {
+	public function build_hints( $session, $discovered, $extra_hints = [] ) {
 		$hints = [
 			'website_url' => $session->website_url,
 		];
@@ -264,71 +267,5 @@ class BWG_AI_Ad_Surface {
 		}
 
 		return $hints;
-	}
-
-	// -------------------------------------------------------------------------
-	// EntityIQ HTTP client — signed outbound requests with shared HMAC secret
-	// -------------------------------------------------------------------------
-
-	/**
-	 * POST JSON to the EntityIQ service.
-	 *
-	 * Signs the request the same way EntityIQ signs its callbacks to us:
-	 * X-BWG-Signature: sha256=HMAC(secret, body + timestamp)
-	 *
-	 * @param string $path       e.g. '/ads/surface'
-	 * @param string $body_json  Already-encoded JSON string.
-	 * @return array|WP_Error
-	 */
-	private function post_to_entityiq( $path, $body_json ) {
-		$base = rtrim( get_option( 'bwg_ai_entityiq_url', '' ), '/' );
-		if ( ! $base ) {
-			return new WP_Error( 'entityiq_not_configured', 'EntityIQ URL is not set.' );
-		}
-
-		$timestamp = (string) time();
-		$secret    = bwg_ai_decrypt_secret( get_option( 'bwg_ai_entityiq_secret', '' ) );
-		$sig       = 'sha256=' . hash_hmac( 'sha256', $body_json . $timestamp, $secret );
-
-		return wp_remote_post(
-			$base . $path,
-			[
-				'headers' => [
-					'Content-Type'    => 'application/json',
-					'X-BWG-Signature' => $sig,
-					'X-BWG-Timestamp' => $timestamp,
-				],
-				'body'    => $body_json,
-				'timeout' => 20,
-			]
-		);
-	}
-
-	/**
-	 * GET from the EntityIQ service. Signs with empty body.
-	 *
-	 * @param string $path  e.g. '/ads/surface/job-id'
-	 * @return array|WP_Error
-	 */
-	private function get_from_entityiq( $path ) {
-		$base = rtrim( get_option( 'bwg_ai_entityiq_url', '' ), '/' );
-		if ( ! $base ) {
-			return new WP_Error( 'entityiq_not_configured', 'EntityIQ URL is not set.' );
-		}
-
-		$timestamp = (string) time();
-		$secret    = bwg_ai_decrypt_secret( get_option( 'bwg_ai_entityiq_secret', '' ) );
-		$sig       = 'sha256=' . hash_hmac( 'sha256', '' . $timestamp, $secret );
-
-		return wp_remote_get(
-			$base . $path,
-			[
-				'headers' => [
-					'X-BWG-Signature' => $sig,
-					'X-BWG-Timestamp' => $timestamp,
-				],
-				'timeout' => 15,
-			]
-		);
 	}
 }

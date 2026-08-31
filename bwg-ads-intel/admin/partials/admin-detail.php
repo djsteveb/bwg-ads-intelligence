@@ -59,7 +59,12 @@ function bwg_ai_render_session_detail( $session_id ) {
 				</tr>
 				<tr>
 					<th>Access Code</th><td><code><?php echo esc_html( $session['access_code'] ); ?></code></td>
-					<th>EntityIQ Job</th><td><?php echo $session['entityiq_job_id'] ? esc_html( $session['entityiq_job_id'] ) : '—'; ?></td>
+					<th>Ad Surface</th>
+					<td>
+						Meta: <?php echo esc_html( BWG_AI_Meta_Ad_Library::is_configured() ? 'API' : 'manual' ); ?>
+						&nbsp;·&nbsp;
+						Google: <?php echo esc_html( BWG_AI_Google_Transparency::is_configured() ? 'render API' : 'manual' ); ?>
+					</td>
 				</tr>
 				<tr>
 					<th>Created</th><td><?php echo esc_html( $session['created_at'] ); ?></td>
@@ -184,14 +189,25 @@ function bwg_ai_render_session_detail( $session_id ) {
 		<h2>Ads (<?php echo count( $ads ); ?>)</h2>
 		<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:16px;max-width:900px;margin-bottom:24px;">
 			<?php foreach ( $ads as $ad ) :
-				$flags      = json_decode( $ad['compliance_flags'] ?? '[]', true );
-				$flag_count = is_array( $flags ) ? count( $flags ) : 0;
-				$high_count = is_array( $flags ) ? count( array_filter( $flags, fn( $f ) => ( $f['severity'] ?? '' ) === 'high' ) ) : 0;
+				$flags          = json_decode( $ad['compliance_flags'] ?? '[]', true );
+				$flag_count     = is_array( $flags ) ? count( $flags ) : 0;
+				$high_count     = is_array( $flags ) ? count( array_filter( $flags, fn( $f ) => ( $f['severity'] ?? '' ) === 'high' ) ) : 0;
+				$vision         = json_decode( $ad['vision_analysis'] ?? 'null', true );
+				$vision_status  = ! empty( $vision['analyzed'] )
+					? esc_html__( 'AI-reviewed', 'bwg-ads-intel' )
+					: ( ! empty( $vision['reason'] ) ? esc_html( 'Vision skipped: ' . $vision['reason'] ) : '' );
 			?>
 			<div style="background:#fff;border:1px solid #ddd;border-radius:6px;overflow:hidden;font-size:13px;">
 				<?php if ( $ad['screenshot_path'] || $ad['ad_image_url'] ) : ?>
-					<img src="<?php echo esc_url( $ad['screenshot_path'] ?: $ad['ad_image_url'] ); ?>"
+					<img src="<?php echo esc_url( $ad['screenshot_path'] ? bwg_ai_screenshot_url( $ad['id'] ) : $ad['ad_image_url'] ); ?>"
 					     alt="" style="width:100%;height:130px;object-fit:cover;display:block;">
+					<?php if ( $ad['screenshot_bytes'] ) : ?>
+						<div style="font-size:10px;color:#999;padding:2px 8px;"><?php echo esc_html( size_format( (int) $ad['screenshot_bytes'] ) ); ?></div>
+					<?php endif; ?>
+				<?php elseif ( ! empty( $ad['ad_snapshot_url'] ) ) : ?>
+					<div style="height:60px;background:#f5f4f0;display:flex;align-items:center;justify-content:center;font-size:12px;">
+						<a href="<?php echo esc_url( $ad['ad_snapshot_url'] ); ?>" target="_blank" rel="noopener">View Ad Snapshot &#8599;</a>
+					</div>
 				<?php else : ?>
 					<div style="height:60px;background:#f5f4f0;display:flex;align-items:center;justify-content:center;color:#999;font-size:12px;">No screenshot</div>
 				<?php endif; ?>
@@ -209,6 +225,9 @@ function bwg_ai_render_session_detail( $session_id ) {
 						<p style="margin:4px 0 0;color:<?php echo $high_count > 0 ? '#c0392b' : '#d97706'; ?>;">
 							&#9888; <?php echo esc_html( $flag_count . ' flag' . ( $flag_count !== 1 ? 's' : '' ) . ( $high_count > 0 ? ', ' . $high_count . ' high' : '' ) ); ?>
 						</p>
+					<?php endif; ?>
+					<?php if ( $vision_status ) : ?>
+						<p style="margin:3px 0 0;font-size:11px;color:#0d6e6e;">&#128065; <?php echo $vision_status; /* phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- already esc_html()'d above */ ?></p>
 					<?php endif; ?>
 					<?php if ( $ad['spend_range'] ) : ?>
 						<p style="margin:3px 0 0;font-size:11px;color:#666;">Spend: <?php echo esc_html( $ad['spend_range'] ); ?></p>
