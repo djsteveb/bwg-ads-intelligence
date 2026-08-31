@@ -36,6 +36,36 @@ This doc tracks the "Phase 2" scope tier: everything intentionally deferred out 
 
 ## Notes for whoever picks up Phase 2
 
-- All four EntityIQ stub files (`google-transparency.js`, `ad-scraper.js`, `vision-compliance.js`, `pdf-report.js`) already define the return shape the WP plugin expects — implementing them is swap-in, not a new contract.
+- All four EntityIQ stub files (`google-transparency.js`, `ad-scraper.js`, `vision-compliance.js`, `pdf-report.js`) already define the return shape the WP plugin expects — implementing them is swap-in, not a new contract, *if* something implements them (see below — nothing currently does).
 - No Phase 2 architectural decisions are locked yet in `docs/ARCHITECTURE.md`. Before starting any item above, a scope/architecture pass should happen first, per `CLAUDE.md`'s "Do not add new features without a documented spec change."
 - Phase 6 (spider) and Phase 7 (admissions audit) have no build-plan milestones written yet — they'll need their own `docs/BUILD-PLAN.md` sections before implementation starts.
+
+## Investigation: does the real EntityIQ repo (`djsteveb/entityiq`) plan or contain any of this?
+
+Checked 2026-08-31 by cloning `djsteveb/entityiq` directly and searching `TODO.md`, `HISTORY.md`, `BWG_SUITE_HANDOFF.md`, `README.md`, and every file under `lib/` and `routes/`.
+
+**No.** There is no `PLAN.md` in that repo, and zero mentions anywhere of Google Ads Transparency, Meta/LinkedIn/TikTok/Bing ad scraping, or vision-based ad compliance. This is not a "not built yet, but planned" situation — the real EntityIQ has diverged into a different product:
+
+**EntityIQ is a Local SEO schema generator + entity intelligence platform**, not an ad-surface scraper. Its actual build phases (1 through 4g per its `TODO.md`) cover schema/JSON-LD generation and validation, Google Business Profile OAuth audits, BrightLocal citation checks, DataForSEO local-pack rank tracking, Google Knowledge Graph / Wikidata entity resolution, and its own PDF/slides report output — none of it ad-related. The `entityiq-extension/` spec in *this* repo describes routes and stub files (`routes/ads.js`, `lib/google-transparency.js`, `lib/vision-compliance.js`, `lib/pdf-report.js`, etc.) that were never carried over into the real EntityIQ codebase. The roadmaps drifted apart at some point after the original cross-repo plan was written.
+
+### Sharing that does exist between the two repos
+
+Credential-sharing only, no feature-sharing:
+- EntityIQ's `google_places_api_key` shared-credential resolver (`bwg_suite_find_shared_credential()`) falls back to Ads Intelligence's `bwg_ai_google_places_key` (and SpeedScout's, and Webring's) when EntityIQ's own key isn't configured — the mirror image of what `CLAUDE.md` already documents from the Ads Intelligence side.
+- `BWG_SUITE_HANDOFF.md` independently flags this same key as a "known duplicate credential" from EntityIQ's side.
+- EntityIQ's shared cache table (`wp_bwg_data_cache`) data types are all SEO/entity-related (`schema_score`, `entity_ids`, `gbp_audit`, `brightlocal_citations`, `dataforseo_local_pack`, `social_presence`, `site_metadata`) — nothing ad-surface related is written or read by either plugin.
+
+### Other EntityIQ capabilities that could be useful (not for the Phase 2 items above, but worth knowing about)
+
+- `lib/scraper.js` — an SSRF-guarded, Cheerio-based website scraper extracting business name/phone/address/hours/social links via schema.org itemprops + OG tags. Overlaps conceptually with this plugin's Phase 1 Discovery (NAP consistency, social discovery) — worth comparing logic against `class-bwg-ai-discovery.php`, though it's Node.js and would need porting, not copying, to reuse in this PHP plugin.
+- `lib/pdf.js` — a working Puppeteer `htmlToPdf()` helper, already deployed inside EntityIQ's Node service. A reasonable template for this plugin's eventual PDF export, but only usable if EntityIQ (or a similar Node service you control) actually exposes a route for it — nothing does today.
+- `lib/claude.js` — existing `@anthropic-ai/sdk` usage pattern in EntityIQ, useful as a reference for eventually wiring Claude vision compliance, though EntityIQ doesn't do image/vision analysis today.
+
+### Can any of this be pulled into the plugin to drop the EntityIQ dependency?
+
+No — there's no ad-scraping, vision-compliance, or ads-PDF code anywhere in EntityIQ to pull in, so there's nothing to vendor. Dropping the cross-system dependency isn't a copy-paste job either way; it's new work regardless of which side builds it. The actual choice is:
+
+1. **Keep depending on EntityIQ** — but its real roadmap doesn't include ad-surface work today, so this means *adding* new routes to EntityIQ (new work there, not something "already there" to wire up).
+2. **Build it self-contained inside `bwg-ads-intel`** — implement Meta/Google/LinkedIn/TikTok/Bing scraping and PDF generation directly in PHP (or a small dedicated Node service owned by this plugin), skipping EntityIQ's Local-SEO-focused service entirely.
+
+This is a scope decision, not a technical one — flagging it for whoever owns both repos rather than assuming a direction here.
