@@ -153,7 +153,23 @@ private function send( $to, $subject, $html, $text = '' ) {
 
 ---
 
-## Storage Admin Dashboard — Detailed Spec
+## 7. Multi-Audience Reports + PDF Export (M14)
+
+**Decision:** All 5 audience reports from `ads-intelligence-prd.md` §6 (Executive, Marketing/CMO, Compliance/Legal, Agency Internal, Admissions Director) are generated from the **same underlying audit data** and rendered by the **same template** (`admin/partials/report-template.php`) — not five separate templates. Each audience gets its own row in `wp_bwg_ai_reports` (own `report_token`, so links stay independently shareable) and one audience-specific "focus" card; the shared cards (risk gauge, wasted spend, top actions, platform snapshot, what's working) render identically across all five, since they're relevant context regardless of audience. This trades some per-audience visual distinctiveness for a single template to maintain and guarantees every audience view reflects the same numbers.
+
+**`BWG_AI_Report::AUDIENCES`** is the source of truth for the 5 audience keys + labels. `generate_all( $session_id )` loops it and returns `[ audience => token ]`; `POST /email-report` calls this instead of generating just the executive report, and emails the executive link (the report page itself links to the other 4 — see below).
+
+**Audience focus data**, computed once per `generate()` call and stored in `report_data['audience_data']`:
+- **Marketing:** platform mix (% of ads per platform), attribution gaps (derived from `discovered` — missing Meta Pixel / GA4 / GTM / TikTok pixel, no Google presence when running Meta-only), a generic 3-phase 90-day roadmap seeded from the top actions.
+- **Compliance:** every unique flag across all ads (not just the top 3), deduplicated by `rule_id`, with severity/citation/how-many-ads-affected, plus a flat remediation checklist. Flags carry `source: 'text'|'vision'` (see §6) so vision-only findings are visibly distinct.
+- **Agency:** an account map (platform + ad count + flag count + access status, i.e. `platform_snapshot` reshaped), upsell signals (heuristics: risk score ≥ 40, no Google presence, any platform stuck in `pending` access), and a static onboarding checklist.
+- **Admissions:** channel volume (ad count per platform) plus an explicit note that call-quality / coaching-gap analysis needs a call-tracking integration this plugin doesn't have (Phase 6 landing-page spider and Phase 7 admissions/call audit are both still deferred — see `docs/BUILD-PLAN.md`). This is stated outright rather than fabricated; the "Admissions Performance" report is intentionally partial until that data exists.
+
+**Report page toolbar:** every report renders a switcher nav (links to the other generated audience reports for the same session — fetched by `session_id` in `class-bwg-ai-rest.php::get_report()`, listed as `$sibling_reports`) plus a **Download PDF** button.
+
+**PDF export:** `window.print()` against the same HTML report page, styled with an `@media print` block (hides the toolbar and the "Book a Call" CTA, flattens the dark hero to a plain bordered card, avoids page breaks mid-card). No server-side PDF library, no Puppeteer, no headless browser — consistent with this plugin's "call an external API directly or don't, never reintroduce a rendering service" pattern from M11/M12.
+
+**Sharing model:** exposing sibling report links on each report page means anyone holding one audience's link can see all 5 for that session — acceptable because all 5 describe the same prospect/session (no cross-tenant leak), matching how the original MVP already treated a single report token as "shareable within this prospect's org."
 
 The admin storage panel (part of M10, rewritten for local storage in M12) lives at **WP Admin → Ads Intelligence → Storage**. Full detail in §2 — summary:
 

@@ -11,6 +11,19 @@ class BWG_AI_Report {
 	const WEIGHT_MEDIUM = 8;
 	const WEIGHT_LOW    = 3;
 
+	/**
+	 * The 5 audience-specific report views (see ads-intelligence-prd.md §6).
+	 * Each shares the same underlying audit data; report-template.php picks
+	 * the label + a focus section based on which one this is.
+	 */
+	const AUDIENCES = [
+		'executive'  => 'Executive / Owner — What Does It Mean',
+		'marketing'  => 'CMO / Marketing Director — Strategic Performance',
+		'compliance' => 'Compliance / Legal — Compliance Risk',
+		'agency'     => 'Agency Internal — Agency Intake',
+		'admissions' => 'Admissions Director — Admissions Performance',
+	];
+
 	// Actions mapped from rule categories (used to derive top 3 actions).
 	private static $rule_actions = [
 		// HIPAA / Legal
@@ -36,13 +49,34 @@ class BWG_AI_Report {
 	// -------------------------------------------------------------------------
 
 	/**
-	 * Generate an executive report for a session and store it.
+	 * Generate all 5 audience reports for a session in one pass.
+	 *
+	 * @param int $session_id
+	 * @return array<string,string>|WP_Error  audience => report_token, or the first WP_Error hit.
+	 */
+	public static function generate_all( $session_id ) {
+		$tokens = [];
+		foreach ( array_keys( self::AUDIENCES ) as $audience ) {
+			$token = self::generate( $session_id, $audience );
+			if ( is_wp_error( $token ) ) {
+				return $token;
+			}
+			$tokens[ $audience ] = $token;
+		}
+		return $tokens;
+	}
+
+	/**
+	 * Generate one audience report for a session and store it.
 	 *
 	 * @param int    $session_id
-	 * @param string $audience  'executive' (only audience for MVP).
+	 * @param string $audience  One of self::AUDIENCES; defaults to 'executive'.
 	 * @return string|WP_Error  Report token UUID on success.
 	 */
 	public static function generate( $session_id, $audience = 'executive' ) {
+		if ( ! isset( self::AUDIENCES[ $audience ] ) ) {
+			$audience = 'executive';
+		}
 		global $wpdb;
 
 		$session_id = absint( $session_id );
@@ -104,6 +138,8 @@ class BWG_AI_Report {
 			'flag_counts'      => $flag_counts,
 			'total_ads'        => count( $ads ),
 			'audience'         => $audience,
+			'audience_label'   => self::AUDIENCES[ $audience ],
+			'audience_data'    => self::build_audience_data( $audience, $ads, $discovered, $access_map, $platform_snap, $risk_score ),
 		];
 
 		// Check for existing report — regenerate idempotently.
@@ -346,5 +382,180 @@ class BWG_AI_Report {
 			}
 		}
 		return $counts;
+	}
+
+	// -------------------------------------------------------------------------
+	// Audience-specific focus data (M14) — each audience shares the core
+	// computations above (risk score, platform snapshot, etc.) and adds one
+	// extra block of data that report-template.php renders as a focus card.
+	// -------------------------------------------------------------------------
+
+	private static function build_audience_data( $audience, array $ads, $discovered, array $access_map, array $platform_snap, $risk_score ) {
+		switch ( $audience ) {
+			case 'marketing':
+				return self::build_marketing_data( $ads, $platform_snap, $discovered );
+			case 'compliance':
+				return self::build_compliance_data( $ads );
+			case 'agency':
+				return self::build_agency_data( $platform_snap, $access_map, $risk_score );
+			case 'admissions':
+				return self::build_admissions_data( $platform_snap );
+			default:
+				return [];
+		}
+	}
+
+	/**
+	 * Marketing / CMO focus: platform mix, tracking/attribution gaps, a
+	 * generic 90-day roadmap seeded from the top actions.
+	 */
+	private static function build_marketing_data( array $ads, array $platform_snap, $discovered ) {
+		$total = max( 1, count( $ads ) );
+		$mix   = [];
+		foreach ( $platform_snap as $platform => $pdata ) {
+			$mix[] = [
+				'platform' => $platform,
+				'pct'      => (int) round( ( $pdata['ad_count'] / $total ) * 100 ),
+				'ad_count' => $pdata['ad_count'],
+			];
+		}
+		usort( $mix, static fn( $a, $b ) => $b['ad_count'] <=> $a['ad_count'] );
+
+		$gaps = [];
+		if ( $discovered ) {
+			if ( empty( $discovered->pixel_meta_id ) ) {
+				$gaps[] = 'No Meta Pixel detected — retargeting and lookalike audiences are unavailable until this is installed.';
+			}
+			if ( empty( $discovered->pixel_ga4_id ) && empty( $discovered->pixel_gtm_id ) ) {
+				$gaps[] = 'No GA4 or GTM tracking detected — conversion data isn\'t flowing back to any platform for optimization.';
+			}
+			if ( empty( $discovered->pixel_tiktok_id ) && ! empty( $discovered->social_tiktok_url ) ) {
+				$gaps[] = 'TikTok presence found but no TikTok pixel detected.';
+			}
+		}
+		if ( ! isset( $platform_snap['google'] ) && isset( $platform_snap['meta'] ) ) {
+			$gaps[] = 'Running on Meta with no Google presence found — search-intent traffic (higher purchase intent for treatment queries) is untapped.';
+		}
+		if ( empty( $gaps ) ) {
+			$gaps[] = 'Core tracking (pixel + analytics) appears to be in place across the platforms audited.';
+		}
+
+		return [
+			'platform_mix'     => $mix,
+			'attribution_gaps' => $gaps,
+			'roadmap_90day'    => [
+				[ 'phase' => 'Days 1–30', 'focus' => 'Fix every high-severity compliance flag before scaling spend on any flagged ad.' ],
+				[ 'phase' => 'Days 31–60', 'focus' => 'Close the tracking gaps above so spend can be attributed and optimized.' ],
+				[ 'phase' => 'Days 61–90', 'focus' => 'Reallocate budget toward the platform(s) with the lowest flag rate and best confirmed-ad performance.' ],
+			],
+		];
+	}
+
+	/**
+	 * Compliance / Legal focus: every unique flag found (not just the top 3),
+	 * itemized with citations, plus a deduplicated remediation checklist.
+	 */
+	private static function build_compliance_data( array $ads ) {
+		$itemized = [];
+		$seen     = [];
+
+		foreach ( $ads as $ad ) {
+			foreach ( $ad->compliance_flags as $flag ) {
+				$rule_id = $flag['rule_id'] ?? '';
+				if ( ! $rule_id ) {
+					continue;
+				}
+				if ( ! isset( $itemized[ $rule_id ] ) ) {
+					$itemized[ $rule_id ] = [
+						'rule_id'     => $rule_id,
+						'severity'    => $flag['severity'] ?? 'low',
+						'category'    => $flag['category'] ?? '',
+						'description' => $flag['description'] ?? $rule_id,
+						'citation'    => $flag['citation'] ?? '',
+						'source'      => $flag['source'] ?? 'text',
+						'ad_count'    => 0,
+					];
+				}
+				$itemized[ $rule_id ]['ad_count']++;
+			}
+		}
+
+		$itemized = array_values( $itemized );
+		usort( $itemized, static function ( $a, $b ) {
+			$order = [ 'high' => 0, 'medium' => 1, 'low' => 2 ];
+			return ( $order[ $a['severity'] ] ?? 9 ) <=> ( $order[ $b['severity'] ] ?? 9 );
+		} );
+
+		$checklist = array_map( static fn( $f ) => $f['description'], $itemized );
+
+		return [
+			'hipaa_itemized'         => $itemized,
+			'remediation_checklist'  => $checklist,
+		];
+	}
+
+	/**
+	 * Agency Internal focus: account map (platform + access status), upsell
+	 * signals, and an onboarding checklist.
+	 */
+	private static function build_agency_data( array $platform_snap, array $access_map, $risk_score ) {
+		$account_map = [];
+		foreach ( $platform_snap as $platform => $pdata ) {
+			$account_map[] = [
+				'platform'      => $platform,
+				'ad_count'      => $pdata['ad_count'],
+				'flag_count'    => $pdata['flag_count'],
+				'access_status' => $pdata['access_status'],
+			];
+		}
+
+		$upsell = [];
+		if ( $risk_score >= 40 ) {
+			$upsell[] = 'Elevated compliance risk score (' . $risk_score . '/100) — strong fit for the managed compliance monitoring service.';
+		}
+		if ( ! isset( $platform_snap['google'] ) ) {
+			$upsell[] = 'No Google ad presence found — cross-sell Google Ads account setup and management.';
+		}
+		foreach ( $access_map as $platform => $status ) {
+			if ( 'pending' === $status ) {
+				$upsell[] = ucfirst( $platform ) . ' access requested but not yet granted — follow up before onboarding stalls.';
+			}
+		}
+		if ( empty( $upsell ) ) {
+			$upsell[] = 'No immediate upsell signals — account is clean and access is in order.';
+		}
+
+		$onboarding = [
+			'Confirm admin access has been granted for every platform in the account map above.',
+			'Verify billing/payment method is active on each ad account.',
+			'Import all flagged ads into the compliance remediation queue.',
+			'Schedule the kickoff strategy call within 5 business days of signed engagement.',
+		];
+
+		return [
+			'account_map'          => $account_map,
+			'upsell_flags'         => $upsell,
+			'onboarding_checklist' => $onboarding,
+		];
+	}
+
+	/**
+	 * Admissions Director focus: channel breakdown from the same platform
+	 * data. Call-quality / coaching-gap analysis needs call-tracking data
+	 * this plugin doesn't collect (Phase 6 landing-page spider and Phase 7
+	 * admissions/call audit are both deferred — see docs/BUILD-PLAN.md) —
+	 * flagged explicitly rather than fabricated.
+	 */
+	private static function build_admissions_data( array $platform_snap ) {
+		$channels = [];
+		foreach ( $platform_snap as $platform => $pdata ) {
+			$channels[] = [ 'platform' => $platform, 'ad_count' => $pdata['ad_count'] ];
+		}
+
+		return [
+			'channel_breakdown'  => $channels,
+			'call_audit_pending' => true,
+			'call_audit_note'    => 'Channel → call → admission tracking and call-quality coaching data require a call-tracking integration (Phase 7 admissions/call audit), not yet built. This report currently covers ad-channel volume only — ask about the managed admissions audit service for the full picture.',
+		];
 	}
 }

@@ -1175,7 +1175,7 @@
 				$wrap.html(
 					'<div class="bwg-ai-phase-icon">&#127881;</div>' +
 					'<h3>Your Report Is Ready</h3>' +
-					'<p>We\'ve emailed your report link. You can also open it directly below.</p>' +
+					'<p>We\'ve emailed your report link. You can also open it directly below — it includes a switcher to the marketing, compliance, agency, and admissions views of the same audit, plus a PDF download.</p>' +
 					( reportUrl
 						? '<a href="' + esc( reportUrl ) + '" class="bwg-ai-btn bwg-ai-btn-primary" target="_blank" rel="noopener" style="margin-top:20px;display:inline-block;">View Executive Report</a>'
 						: ''

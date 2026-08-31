@@ -94,11 +94,11 @@ git push -u origin claude/{milestone-slug}
 
 ## Build Status
 
-**Last completed milestone:** M13 — Claude vision compliance (2026-08-31). New `class-bwg-ai-vision.php` sends each ad's creative to the Claude API (`claude-opus-5`, raw `wp_remote_post()` — no PHP SDK, matching every other external call in this dependency-free plugin) with a HIPAA/42-CFR-Part-2/FTC-focused prompt, merging its flags into `compliance_flags` alongside the text rules (both now tagged `source: 'text'|'vision'`). For Meta ads (whose only creative is `ad_snapshot_url`, an HTML page) it reuses M12's render-provider to capture a real image first. Gated by a new `bwg_ai_claude_api_key` setting — unconfigured means vision is skipped silently, same fallback pattern as Meta/Google. See `docs/ARCHITECTURE.md` §6 and `docs/PHASE-2-STATUS.md`.
+**Last completed milestone:** M14 — PDF export + remaining audience reports (2026-08-31). `class-bwg-ai-report.php` now generates all 5 audience reports from `ads-intelligence-prd.md` §6 (executive, marketing, compliance, agency, admissions) via `generate_all()` — same shared core data, one extra `audience_data` block per audience. One template (`report-template.php`) renders all 5, with a toolbar linking between a session's sibling reports and a "Download PDF" button (`window.print()` + `@media print` CSS — no server-side PDF library, no headless browser). `POST /email-report` generates all 5 in one call; the admissions report is honest about what it can't show yet (no call-tracking data — Phase 6/7 aren't built). See `docs/ARCHITECTURE.md` §7 and `docs/PHASE-2-STATUS.md`.
 
-**Previous milestone:** M12 — Google Ads Transparency + local screenshot storage (2026-08-31) — render-provider abstraction for Google's Transparency Center, local screenshot storage with backup/delete-by-range/delete-by-age, and full EntityIQ retirement.
+**Previous milestone:** M13 — Claude vision compliance (2026-08-31) — HIPAA-focused vision analysis of ad creative via the Claude API, reusing M12's render provider to capture Meta ad snapshots as images.
 
-**Next milestone to build:** M14 — PDF export + remaining audience reports (see `docs/PHASE-2-BUILD-PLAN.md`)
+**Next milestone to build:** M15 — LinkedIn/TikTok ad surface, pending a ToS review spike (see `docs/PHASE-2-BUILD-PLAN.md`)
 
 **Milestones:**
 - [x] Planning — docs written, todos set
@@ -117,7 +117,7 @@ git push -u origin claude/{milestone-slug}
 - [x] M11 — Fix Meta Ad Library integration (direct Graph API call, no EntityIQ)
 - [x] M12 — Google Ads Transparency (render-provider) + local screenshot storage/backup/retention
 - [x] M13 — Claude vision compliance (reuses M12 render provider for Meta creative)
-- [ ] M14 — PDF export + remaining audience reports
+- [x] M14 — PDF export + remaining audience reports
 - [ ] M15 — LinkedIn/TikTok (pending ToS spike)
 
 *(Update this list after each milestone is committed.)*
@@ -247,9 +247,9 @@ This plugin does **not** currently have a `bwg-suite-bridge.php` file, so it doe
 >
 > The project is: BWG Ads Intelligence System — a WordPress plugin for auditing treatment center advertisers' ad footprint. Originally spec'd as a two-repo architecture with a separate Node.js EntityIQ extension; that side was never built (see `docs/PHASE-2-STATUS.md`), so all ad-surface/vision/PDF work is now self-contained in this plugin, calling external APIs directly. All architectural decisions are locked in `docs/ARCHITECTURE.md`.
 >
-> **Current status: MVP (M0–M10 + Security Review) complete. M11 (Meta Ad Library fix), M12 (Google Ads Transparency + local screenshot storage), and M13 (Claude vision compliance) complete.**
+> **Current status: MVP (M0–M10 + Security Review) complete. M11 (Meta Ad Library fix), M12 (Google Ads Transparency + local screenshot storage), M13 (Claude vision compliance), and M14 (PDF export + remaining audience reports) complete.**
 >
-> **Next task: M14 — PDF export + remaining audience reports (see `docs/PHASE-2-BUILD-PLAN.md`).**
+> **Next task: M15 — LinkedIn/TikTok ad surface, pending a ToS review spike (see `docs/PHASE-2-BUILD-PLAN.md`).**
 >
 > Do not add new features beyond `docs/PHASE-2-BUILD-PLAN.md` without a documented spec change.
 

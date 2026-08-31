@@ -670,8 +670,32 @@ class BWG_AI_Rest {
 			$whats_working     = isset( $report_data['whats_working'] )     ? (array)  $report_data['whats_working']     : [];
 			$flag_counts       = isset( $report_data['flag_counts'] )       ? (array)  $report_data['flag_counts']       : [ 'high' => 0, 'medium' => 0, 'low' => 0 ];
 			$total_ads         = isset( $report_data['total_ads'] )         ? (int)    $report_data['total_ads']         : 0;
+			$audience          = isset( $report_data['audience'] )          ? (string) $report_data['audience']          : 'executive';
+			$audience_label    = isset( $report_data['audience_label'] )    ? (string) $report_data['audience_label']    : 'Executive / Owner';
+			$audience_data     = isset( $report_data['audience_data'] )     ? (array)  $report_data['audience_data']     : [];
 			$generated_at      = $report->generated_at;
 			$report_token      = $token;
+
+			// Sibling audience reports for the same session, so the page can
+			// link between all 5 views without exposing anything beyond what
+			// this token's holder is already meant to see (same prospect).
+			$sibling_rows = $wpdb->get_results(
+				$wpdb->prepare(
+					"SELECT audience_type, report_token FROM `{$wpdb->prefix}bwg_ai_reports`
+					 WHERE session_id = %d AND (expires_at IS NULL OR expires_at > %s)
+					 ORDER BY FIELD(audience_type, 'executive','marketing','compliance','agency','admissions')",
+					$report->session_id,
+					gmdate( 'Y-m-d H:i:s' )
+				)
+			);
+			$sibling_reports = array_map( static function ( $row ) {
+				return [
+					'audience' => $row->audience_type,
+					'label'    => BWG_AI_Report::AUDIENCES[ $row->audience_type ] ?? ucfirst( $row->audience_type ),
+					'token'    => $row->report_token,
+					'url'      => rest_url( 'bwg/v1/ai/report/' . $row->report_token ),
+				];
+			}, $sibling_rows );
 
 			$template = BWG_AI_DIR . 'admin/partials/report-template.php';
 			if ( file_exists( $template ) ) {
@@ -696,7 +720,9 @@ class BWG_AI_Rest {
 
 	/**
 	 * POST /email-report
-	 * Generates the executive report and emails the link to the session owner.
+	 * Generates all 5 audience reports and emails the executive link to the
+	 * session owner — the report page itself links to the other 4 audience
+	 * views (see BWG_AI_Report::AUDIENCES).
 	 */
 	public function email_report( WP_REST_Request $request ) {
 		$session_id = absint( $request->get_param( 'session_id' ) );
@@ -705,11 +731,12 @@ class BWG_AI_Rest {
 			return $session;
 		}
 
-		$token = BWG_AI_Report::generate( $session->id );
-		if ( is_wp_error( $token ) ) {
-			return $token;
+		$tokens = BWG_AI_Report::generate_all( $session->id );
+		if ( is_wp_error( $tokens ) ) {
+			return $tokens;
 		}
 
+		$token      = $tokens['executive'];
 		$report_url = rest_url( 'bwg/v1/ai/report/' . $token );
 
 		if ( class_exists( 'BWG_AI_Email' ) ) {
@@ -717,12 +744,13 @@ class BWG_AI_Rest {
 		}
 
 		BWG_AI_Session::update_step( $session->id, 5 );
-		BWG_AI_Session::log( $session->id, 'report_emailed', "Token: {$token}" );
+		BWG_AI_Session::log( $session->id, 'report_emailed', "Executive token: {$token} (" . count( $tokens ) . ' audience reports generated).' );
 
 		return new WP_REST_Response( [
 			'ok'         => true,
 			'token'      => $token,
 			'report_url' => $report_url,
+			'tokens'     => $tokens,
 		], 200 );
 	}
 

@@ -102,16 +102,24 @@ plugin and would require site owners to run `composer install`. See
 
 ---
 
-## Milestone 14 — PDF Export + Remaining Audience Reports
+## Milestone 14 — PDF Export + Remaining Audience Reports ✅ Complete
 
 **Exit criteria:** All 5 audience reports (not just executive) generate from
 the same report-data source, and a PDF can be downloaded from any of them.
 
+**Audience set** (from `ads-intelligence-prd.md` §6): `executive`,
+`marketing`, `compliance`, `agency`, `admissions` — see
+`BWG_AI_Report::AUDIENCES`. `admissions` is intentionally partial (channel
+volume only, no call-quality data — that needs a call-tracking integration
+neither Phase 6 nor Phase 7 have built yet; stated explicitly in the report
+rather than fabricated).
+
 | File | What it does |
 |---|---|
-| `ads-intel/class-bwg-ai-report.php` | Extend `generate()` to accept `audience` values beyond `executive` (e.g. `clinical`, `compliance`, `marketing`, `board`) — same underlying data, different framing/template. |
-| `admin/partials/report-template.php` | Split into audience-specific partials or add conditional sections keyed by `audience_type`. |
-| PDF export | Browser print-to-PDF against the same HTML report template (`window.print()` + `@media print` CSS) — no server-side PDF library, no headless browser dependency. |
+| `ads-intel/class-bwg-ai-report.php` | `generate()` now builds an `audience_data` block per audience (`build_marketing_data()`, `build_compliance_data()`, `build_agency_data()`, `build_admissions_data()`) on top of the shared core computations. `generate_all()` generates all 5 in one call. |
+| `admin/partials/report-template.php` | One template for all 5 — the shared cards (risk gauge, wasted spend, top actions, platform snapshot, what's working) render for every audience; one conditional focus card keyed on `$audience` renders the audience-specific data. Toolbar adds an audience switcher (links to sibling reports for the same session) and a "Download PDF" button. |
+| `ads-intel/class-bwg-ai-rest.php` | `POST /email-report` calls `generate_all()`; `GET /report/{token}` looks up sibling reports for the session and passes them to the template. |
+| PDF export | `window.print()` against the same HTML report page, with an `@media print` block (hides toolbar/CTA, flattens the dark hero, avoids mid-card page breaks) — no server-side PDF library, no headless browser dependency, matching the M11/M12 "call the real thing directly or don't" pattern. |
 
 ---
 

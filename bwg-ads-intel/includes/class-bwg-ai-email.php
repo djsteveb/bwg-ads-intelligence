@@ -510,7 +510,7 @@ class BWG_AI_Email {
 
 		$body = '
 		<h2 style="color:#1a1a2e;font-family:Georgia,serif;font-size:26px;margin:0 0 16px;">Your Ads Intelligence Report Is Ready</h2>
-		<p style="color:#4a4a4a;font-size:15px;line-height:1.7;margin:0 0 24px;">Your full audit report has been generated. It includes your compliance risk score, estimated wasted spend, a platform snapshot, and a prioritized list of the highest-impact fixes.</p>
+		<p style="color:#4a4a4a;font-size:15px;line-height:1.7;margin:0 0 24px;">Your full audit report has been generated. It includes your compliance risk score, estimated wasted spend, a platform snapshot, and a prioritized list of the highest-impact fixes — with a built-in switcher to marketing, compliance, agency, and admissions views of the same audit, and a PDF download.</p>
 
 		<div style="text-align:center;margin:0 0 32px;">
 			<a href="' . $report_url . '" style="background:#1a1a2e;color:#ffffff;display:inline-block;font-family:Arial,sans-serif;font-size:16px;font-weight:600;padding:14px 32px;border-radius:6px;text-decoration:none;">View My Report</a>
@@ -518,7 +518,7 @@ class BWG_AI_Email {
 
 		<p style="color:#4a4a4a;font-size:14px;line-height:1.7;margin:0 0 24px;">You can also <a href="' . $resume_url . '" style="color:#1a1a2e;">return to your audit</a> to review ad details, add more accounts, or request platform access.</p>
 
-		<p style="color:#aaa;font-size:12px;margin:0;">This report link is private and unique to your account. It expires in 30 days.</p>';
+		<p style="color:#aaa;font-size:12px;margin:0;">This report link is private and unique to your account. It expires in 90 days.</p>';
 
 		return $this->wrap( $body, 'Your Ads Intelligence Report Is Ready' );
 	}

@@ -1,13 +1,14 @@
 <?php
 /**
- * Executive Report Template
+ * Audience Report Template (5 audience views — see BWG_AI_Report::AUDIENCES)
  * Rendered by GET /report/{token} when Accept header includes text/html.
  * $report_data array is extracted from the reports row before include.
  *
- * Available variables (extracted from $report_data):
+ * Available variables (extracted from $report_data by class-bwg-ai-rest.php):
  *   $business_name, $website_url, $risk_score, $wasted_spend,
  *   $top_actions, $platform_snapshot, $whats_working, $flag_counts,
- *   $total_ads, $audience, $generated_at, $report_token
+ *   $total_ads, $audience, $audience_label, $audience_data,
+ *   $generated_at, $report_token, $sibling_reports
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -17,6 +18,10 @@ if ( ! defined( 'ABSPATH' ) ) {
 $schedule_url = esc_url( get_option( 'bwg_ai_booking_url', '' ) );
 $risk_label   = $risk_score >= 70 ? 'Critical' : ( $risk_score >= 40 ? 'Elevated' : 'Moderate' );
 $risk_color   = $risk_score >= 70 ? '#c0392b'   : ( $risk_score >= 40 ? '#d97706'   : '#2d6a4f'   );
+$audience     = $audience ?? 'executive';
+$audience_label = $audience_label ?? 'Executive / Owner — What Does It Mean';
+$audience_data  = $audience_data ?? [];
+$sibling_reports = $sibling_reports ?? [];
 
 // Gauge arc: stroke-dasharray trick on a 188-unit circle (r=30, circumference ≈ 188).
 $circumference = 188;
@@ -27,7 +32,7 @@ $dash_offset   = $circumference - ( $circumference * ( $risk_score / 100 ) );
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Ad Intelligence Report<?php echo $business_name ? ' — ' . esc_html( $business_name ) : ''; ?></title>
+<title>Ad Intelligence Report<?php echo $business_name ? ' — ' . esc_html( $business_name ) : ''; ?> (<?php echo esc_html( ucfirst( $audience ) ); ?>)</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -464,15 +469,149 @@ a:hover { text-decoration: underline; }
 	.rpt-gauge-wrap { flex-direction: column; gap: 20px; }
 	.rpt-cta { padding: 28px 20px; }
 }
+
+/* =====================================================================
+   TOOLBAR — audience switcher + PDF download (screen only)
+   ===================================================================== */
+.rpt-toolbar {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	margin-bottom: 16px;
+}
+
+.rpt-switcher {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+}
+
+.rpt-switcher a {
+	font-size: 12px;
+	font-weight: 500;
+	padding: 6px 12px;
+	border-radius: 20px;
+	background: #fff;
+	border: 1px solid var(--border);
+	color: var(--ink2);
+}
+
+.rpt-switcher a.active {
+	background: var(--ink);
+	border-color: var(--ink);
+	color: #f5f2eb;
+}
+
+.rpt-switcher a:hover { text-decoration: none; background: var(--surface2); }
+.rpt-switcher a.active:hover { background: var(--ink); }
+
+.rpt-print-btn {
+	font-size: 12px;
+	font-weight: 600;
+	padding: 7px 16px;
+	border-radius: 20px;
+	background: var(--teal);
+	color: #fff;
+	border: none;
+	cursor: pointer;
+	flex-shrink: 0;
+}
+
+.rpt-print-btn:hover { background: #095555; }
+
+/* =====================================================================
+   AUDIENCE FOCUS SECTIONS
+   ===================================================================== */
+.rpt-checklist {
+	list-style: none;
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+}
+
+.rpt-checklist li {
+	display: flex;
+	gap: 10px;
+	align-items: flex-start;
+	font-size: 14px;
+	line-height: 1.5;
+}
+
+.rpt-checklist li::before {
+	content: '\2610';
+	color: var(--gold-mid);
+	flex-shrink: 0;
+}
+
+.rpt-roadmap-phase {
+	padding: 14px 16px;
+	border-radius: 8px;
+	background: var(--surface);
+	border: 1px solid var(--border);
+	margin-bottom: 10px;
+}
+
+.rpt-roadmap-phase strong {
+	display: block;
+	font-family: 'IBM Plex Mono', 'Courier New', monospace;
+	font-size: 11px;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	color: var(--gold-mid);
+	margin-bottom: 4px;
+}
+
+.rpt-note-box {
+	background: var(--teal-light);
+	border: 1px solid #9fd4cc;
+	border-radius: var(--radius);
+	padding: 16px 20px;
+	font-size: 13px;
+	color: var(--ink2);
+	line-height: 1.5;
+}
+
+/* =====================================================================
+   PRINT (PDF export via browser print-to-PDF)
+   ===================================================================== */
+@media print {
+	.rpt-toolbar, .rpt-cta { display: none !important; }
+	body { background: #fff; }
+	.rpt-wrap { max-width: 100%; padding: 0; }
+	.rpt-hero { background: #fff; color: var(--ink); border: 1px solid var(--border); }
+	.rpt-hero h1, .rpt-hero-sub { color: var(--ink); }
+	.rpt-hero-meta { color: var(--ink3); }
+	.rpt-card { box-shadow: none; break-inside: avoid; }
+	a[href]::after { content: ""; }
+}
 </style>
 </head>
 <body>
 
 <div class="rpt-wrap">
 
+	<!-- ── TOOLBAR ──────────────────────────────────────────────── -->
+	<div class="rpt-toolbar">
+		<?php if ( count( $sibling_reports ) > 1 ) : ?>
+		<nav class="rpt-switcher" aria-label="Switch report audience">
+			<?php foreach ( $sibling_reports as $sibling ) : ?>
+				<a href="<?php echo esc_url( $sibling['url'] ); ?>"
+				   class="<?php echo $sibling['audience'] === $audience ? 'active' : ''; ?>">
+					<?php echo esc_html( ucfirst( $sibling['audience'] ) ); ?>
+				</a>
+			<?php endforeach; ?>
+		</nav>
+		<?php else : ?>
+		<div></div>
+		<?php endif; ?>
+		<button type="button" class="rpt-print-btn" onclick="window.print()">Download PDF</button>
+	</div>
+
 	<!-- ── HERO ─────────────────────────────────────────────────── -->
 	<div class="rpt-hero">
-		<div class="rpt-hero-label">BWG Ads Intelligence — Executive Report</div>
+		<div class="rpt-hero-label">BWG Ads Intelligence — <?php echo esc_html( $audience_label ); ?></div>
 		<h1>
 			<?php if ( $business_name ) : ?>
 				<?php echo esc_html( $business_name ); ?>
@@ -574,6 +713,118 @@ a:hover { text-decoration: underline; }
 			<?php endforeach; ?>
 		</ul>
 	</div>
+
+	<!-- ── AUDIENCE FOCUS ────────────────────────────────────────── -->
+	<?php if ( 'marketing' === $audience && ! empty( $audience_data ) ) : ?>
+	<div class="rpt-card">
+		<div class="rpt-card-label">Strategic Performance</div>
+		<h2>Platform Mix &amp; Attribution Gaps</h2>
+		<?php if ( ! empty( $audience_data['platform_mix'] ) ) : ?>
+		<div class="rpt-table-wrap" style="margin-bottom:20px;">
+			<table class="rpt-table">
+				<thead><tr><th>Platform</th><th>Ads</th><th>Share of Mix</th></tr></thead>
+				<tbody>
+				<?php foreach ( $audience_data['platform_mix'] as $row ) : ?>
+					<tr>
+						<td><span class="rpt-platform-name"><?php echo esc_html( $row['platform'] ); ?></span></td>
+						<td><?php echo esc_html( $row['ad_count'] ); ?></td>
+						<td><?php echo esc_html( $row['pct'] ); ?>%</td>
+					</tr>
+				<?php endforeach; ?>
+				</tbody>
+			</table>
+		</div>
+		<?php endif; ?>
+		<?php if ( ! empty( $audience_data['attribution_gaps'] ) ) : ?>
+		<h2 style="font-size:16px;margin-bottom:10px;">Attribution Gaps</h2>
+		<ul class="rpt-working-list" style="margin-bottom:20px;">
+			<?php foreach ( $audience_data['attribution_gaps'] as $gap ) : ?>
+				<li class="rpt-working-item"><span class="rpt-working-check" style="color:var(--amber);">&#9888;</span><span><?php echo esc_html( $gap ); ?></span></li>
+			<?php endforeach; ?>
+		</ul>
+		<?php endif; ?>
+		<?php if ( ! empty( $audience_data['roadmap_90day'] ) ) : ?>
+		<h2 style="font-size:16px;margin-bottom:10px;">90-Day Roadmap</h2>
+		<?php foreach ( $audience_data['roadmap_90day'] as $phase ) : ?>
+			<div class="rpt-roadmap-phase">
+				<strong><?php echo esc_html( $phase['phase'] ); ?></strong>
+				<?php echo esc_html( $phase['focus'] ); ?>
+			</div>
+		<?php endforeach; ?>
+		<?php endif; ?>
+	</div>
+	<?php endif; ?>
+
+	<?php if ( 'compliance' === $audience && ! empty( $audience_data['hipaa_itemized'] ) ) : ?>
+	<div class="rpt-card">
+		<div class="rpt-card-label">Compliance Risk — Full Itemization</div>
+		<h2>Every Flag Found, Cited</h2>
+		<div class="rpt-table-wrap" style="margin-bottom:20px;">
+			<table class="rpt-table">
+				<thead><tr><th>Severity</th><th>Description</th><th>Citation</th><th>Ads Affected</th></tr></thead>
+				<tbody>
+				<?php foreach ( $audience_data['hipaa_itemized'] as $flag ) : ?>
+					<tr>
+						<td><span class="rpt-sev-badge <?php echo esc_attr( $flag['severity'] ); ?>"><?php echo esc_html( $flag['severity'] ); ?></span></td>
+						<td><?php echo esc_html( $flag['description'] ); ?><?php echo 'vision' === ( $flag['source'] ?? '' ) ? ' <span style="opacity:.6;">(AI vision review)</span>' : ''; /* phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- static markup only */ ?></td>
+						<td style="font-size:12px;color:var(--ink3);"><?php echo esc_html( $flag['citation'] ); ?></td>
+						<td><?php echo esc_html( $flag['ad_count'] ); ?></td>
+					</tr>
+				<?php endforeach; ?>
+				</tbody>
+			</table>
+		</div>
+		<h2 style="font-size:16px;margin-bottom:10px;">Remediation Checklist</h2>
+		<ul class="rpt-checklist">
+			<?php foreach ( $audience_data['remediation_checklist'] as $item ) : ?>
+				<li><?php echo esc_html( $item ); ?></li>
+			<?php endforeach; ?>
+		</ul>
+	</div>
+	<?php endif; ?>
+
+	<?php if ( 'agency' === $audience && ! empty( $audience_data ) ) : ?>
+	<div class="rpt-card">
+		<div class="rpt-card-label">Agency Intake</div>
+		<h2>Account Map &amp; Onboarding</h2>
+		<?php if ( ! empty( $audience_data['upsell_flags'] ) ) : ?>
+		<h2 style="font-size:16px;margin-bottom:10px;">Upsell Signals</h2>
+		<ul class="rpt-working-list" style="margin-bottom:20px;">
+			<?php foreach ( $audience_data['upsell_flags'] as $flag ) : ?>
+				<li class="rpt-working-item"><span class="rpt-working-check" style="color:var(--gold-mid);">&#9733;</span><span><?php echo esc_html( $flag ); ?></span></li>
+			<?php endforeach; ?>
+		</ul>
+		<?php endif; ?>
+		<h2 style="font-size:16px;margin-bottom:10px;">Onboarding Checklist</h2>
+		<ul class="rpt-checklist">
+			<?php foreach ( $audience_data['onboarding_checklist'] as $item ) : ?>
+				<li><?php echo esc_html( $item ); ?></li>
+			<?php endforeach; ?>
+		</ul>
+	</div>
+	<?php endif; ?>
+
+	<?php if ( 'admissions' === $audience && ! empty( $audience_data ) ) : ?>
+	<div class="rpt-card">
+		<div class="rpt-card-label">Admissions Performance</div>
+		<h2>Channel Volume</h2>
+		<?php if ( ! empty( $audience_data['channel_breakdown'] ) ) : ?>
+		<div class="rpt-table-wrap" style="margin-bottom:20px;">
+			<table class="rpt-table">
+				<thead><tr><th>Channel</th><th>Ads Found</th></tr></thead>
+				<tbody>
+				<?php foreach ( $audience_data['channel_breakdown'] as $row ) : ?>
+					<tr><td><span class="rpt-platform-name"><?php echo esc_html( $row['platform'] ); ?></span></td><td><?php echo esc_html( $row['ad_count'] ); ?></td></tr>
+				<?php endforeach; ?>
+				</tbody>
+			</table>
+		</div>
+		<?php endif; ?>
+		<?php if ( ! empty( $audience_data['call_audit_note'] ) ) : ?>
+		<div class="rpt-note-box"><?php echo esc_html( $audience_data['call_audit_note'] ); ?></div>
+		<?php endif; ?>
+	</div>
+	<?php endif; ?>
 
 	<!-- ── PLATFORM SNAPSHOT ─────────────────────────────────────── -->
 	<?php if ( ! empty( $platform_snapshot ) ) : ?>

@@ -34,8 +34,8 @@ milestone genuinely needs one.
 | M11 | Meta Ad Library — direct Graph API `ads_archive` call, drop EntityIQ job queue/webhook, manual-entry fallback | ✅ Complete (2026-08-31) |
 | M12 | Google Ads Transparency (render-provider abstraction) + local screenshot storage subsystem (backup, delete-by-range, delete-by-age) | ✅ Complete (2026-08-31) |
 | M13 | Claude vision compliance on ad creative — HIPAA-focused prompt, reuses the M12 render provider for Meta ad snapshots | ✅ Complete (2026-08-31) |
-| M14 | PDF export (browser print-to-PDF, same report source) + 4 remaining audience reports | Next |
-| M15 | LinkedIn/TikTok ad surface — after a ToS review spike | Planned |
+| M14 | PDF export (browser print-to-PDF, same report source) + 4 remaining audience reports | ✅ Complete (2026-08-31) |
+| M15 | LinkedIn/TikTok ad surface — after a ToS review spike | Next |
 | — | Bing/Microsoft Ads Transparency | Cut — no public data source exists |
 
 Full milestone specs are in `docs/PHASE-2-BUILD-PLAN.md`.
@@ -141,6 +141,40 @@ Full milestone specs are in `docs/PHASE-2-BUILD-PLAN.md`.
 
 ---
 
+## What M14 changed
+
+- **Extended** `class-bwg-ai-report.php` with `AUDIENCES` (the 5 audience
+  keys/labels from `ads-intelligence-prd.md` §6) and `generate_all()`,
+  which loops `generate()` once per audience — each gets its own
+  `wp_bwg_ai_reports` row and `report_token`. Every audience shares the
+  same core computations (risk score, wasted spend, top actions, platform
+  snapshot, what's working) and adds one audience-specific `audience_data`
+  block: platform mix + attribution gaps + a 90-day roadmap (marketing);
+  every unique flag itemized with citations + a remediation checklist
+  (compliance); an account map + upsell signals + onboarding checklist
+  (agency); channel volume + an explicit note that call-quality data needs
+  a not-yet-built call-tracking integration (admissions).
+- **`POST /email-report`** now calls `generate_all()` instead of generating
+  just the executive report; still emails the executive link (report copy
+  updated to mention the other 4 views + PDF download).
+- **`GET /report/{token}`** looks up sibling reports for the same
+  `session_id` and passes them to the template as `$sibling_reports`, so
+  every report page can link to the other generated audience views.
+- **One template, all 5 audiences:** `report-template.php` didn't get 5
+  separate files — it renders one audience-specific focus card based on
+  `$audience`/`$audience_data`, keyed off the same design system as the
+  existing executive sections. Added a toolbar (audience switcher +
+  "Download PDF" button) and an `@media print` block.
+- **PDF export:** `window.print()` against that same HTML page — no
+  server-side PDF library, no headless browser. Consistent with this
+  plugin's established pattern of calling external APIs directly or not at
+  all, never standing up a rendering service.
+- **Fixed in passing:** the report-ready email said links expire in 30
+  days; the actual `expires_at` has always been +90 days (`generate()`).
+  Copy now matches.
+
+---
+
 ## Known follow-ups (not blocking)
 
 - `wp_bwg_ai_sessions.entityiq_job_id` column is still unused dead schema
@@ -152,3 +186,13 @@ Full milestone specs are in `docs/PHASE-2-BUILD-PLAN.md`.
 - Vision analysis for manually-pasted ads runs synchronously inside
   `POST /manual-ads` (bounded by the existing 25-ad cap). Fine at current
   volumes; move off the request thread if that stops being true.
+- The Admissions Performance report is intentionally partial — it has
+  channel volume but no call-quality/coaching-gap data, since that needs a
+  call-tracking integration (Phase 6 landing-page spider, Phase 7
+  admissions/call audit) neither of which is built yet. Revisit once either
+  ships.
+- All 5 audience reports share the same core sections (risk gauge, wasted
+  spend, top actions, platform snapshot, what's working) plus one
+  audience-specific focus card, rather than 5 fully bespoke layouts. A
+  deliberate scope tradeoff for M14 — revisit if a specific audience needs
+  a materially different structure, not just a different focus section.
