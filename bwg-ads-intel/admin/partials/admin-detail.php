@@ -189,9 +189,13 @@ function bwg_ai_render_session_detail( $session_id ) {
 		<h2>Ads (<?php echo count( $ads ); ?>)</h2>
 		<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:16px;max-width:900px;margin-bottom:24px;">
 			<?php foreach ( $ads as $ad ) :
-				$flags      = json_decode( $ad['compliance_flags'] ?? '[]', true );
-				$flag_count = is_array( $flags ) ? count( $flags ) : 0;
-				$high_count = is_array( $flags ) ? count( array_filter( $flags, fn( $f ) => ( $f['severity'] ?? '' ) === 'high' ) ) : 0;
+				$flags          = json_decode( $ad['compliance_flags'] ?? '[]', true );
+				$flag_count     = is_array( $flags ) ? count( $flags ) : 0;
+				$high_count     = is_array( $flags ) ? count( array_filter( $flags, fn( $f ) => ( $f['severity'] ?? '' ) === 'high' ) ) : 0;
+				$vision         = json_decode( $ad['vision_analysis'] ?? 'null', true );
+				$vision_status  = ! empty( $vision['analyzed'] )
+					? esc_html__( 'AI-reviewed', 'bwg-ads-intel' )
+					: ( ! empty( $vision['reason'] ) ? esc_html( 'Vision skipped: ' . $vision['reason'] ) : '' );
 			?>
 			<div style="background:#fff;border:1px solid #ddd;border-radius:6px;overflow:hidden;font-size:13px;">
 				<?php if ( $ad['screenshot_path'] || $ad['ad_image_url'] ) : ?>
@@ -221,6 +225,9 @@ function bwg_ai_render_session_detail( $session_id ) {
 						<p style="margin:4px 0 0;color:<?php echo $high_count > 0 ? '#c0392b' : '#d97706'; ?>;">
 							&#9888; <?php echo esc_html( $flag_count . ' flag' . ( $flag_count !== 1 ? 's' : '' ) . ( $high_count > 0 ? ', ' . $high_count . ' high' : '' ) ); ?>
 						</p>
+					<?php endif; ?>
+					<?php if ( $vision_status ) : ?>
+						<p style="margin:3px 0 0;font-size:11px;color:#0d6e6e;">&#128065; <?php echo $vision_status; /* phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- already esc_html()'d above */ ?></p>
 					<?php endif; ?>
 					<?php if ( $ad['spend_range'] ) : ?>
 						<p style="margin:3px 0 0;font-size:11px;color:#666;">Spend: <?php echo esc_html( $ad['spend_range'] ); ?></p>

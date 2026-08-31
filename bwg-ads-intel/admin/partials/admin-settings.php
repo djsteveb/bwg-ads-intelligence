@@ -246,6 +246,15 @@ function bwg_ai_settings_api() {
 				</td>
 			</tr>
 			<tr>
+				<th scope="row"><label for="bwg_ai_claude_api_key">Claude (Anthropic) API Key</label></th>
+				<td>
+					<input type="password" id="bwg_ai_claude_api_key" name="bwg_ai_claude_api_key"
+					       value="<?php echo esc_attr( bwg_ai_decrypt_secret( get_option( 'bwg_ai_claude_api_key', '' ) ) ); ?>"
+					       class="regular-text" autocomplete="new-password">
+					<p class="description">Used for vision compliance analysis of ad creative (HIPAA-focused review of images/screenshots). Leave blank to skip vision analysis — text compliance checks still run either way.</p>
+				</td>
+			</tr>
+			<tr>
 				<th scope="row"><label for="bwg_ai_captcha_site_key">Cloudflare Turnstile Site Key</label></th>
 				<td>
 					<input type="text" id="bwg_ai_captcha_site_key" name="bwg_ai_captcha_site_key"

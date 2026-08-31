@@ -152,7 +152,33 @@ class BWG_AI_Ad_Surface {
 			$run_dates        = sanitize_text_field( $ad['run_dates'] ?? '' );
 			$spend_range      = sanitize_text_field( $ad['spend_range'] ?? '' );
 
-			$flags = $this->run_compliance( $ad_copy, $platform );
+			$flags = array_map( static function ( $f ) {
+				$f['source'] = $f['source'] ?? 'text';
+				return $f;
+			}, $this->run_compliance( $ad_copy, $platform ) );
+
+			// Vision compliance (M13) — best-effort, never blocks saving.
+			// May also capture a screenshot of a Meta ad_snapshot_url page
+			// (via the render provider) when nothing was captured already,
+			// so vision gets an image to look at.
+			$vision_analysis = [ 'analyzed' => false, 'reason' => 'not_configured', 'flags' => [] ];
+			if ( class_exists( 'BWG_AI_Vision' ) && BWG_AI_Vision::is_configured() ) {
+				$ad_for_vision = $ad;
+				if ( $screenshot_path ) {
+					$ad_for_vision['screenshot_path'] = $screenshot_path;
+				}
+				$vision_analysis = BWG_AI_Vision::analyze( $session_id, $platform, $ad_for_vision );
+
+				if ( ! empty( $vision_analysis['flags'] ) ) {
+					$flags = array_merge( $flags, $vision_analysis['flags'] );
+				}
+				if ( ! $screenshot_path && ! empty( $vision_analysis['screenshot_path'] ) ) {
+					$screenshot_path  = sanitize_text_field( $vision_analysis['screenshot_path'] );
+					$screenshot_bytes = absint( $vision_analysis['screenshot_bytes'] ?? 0 );
+				}
+				// Don't duplicate the (already large) raw file paths back into the JSON blob.
+				unset( $vision_analysis['screenshot_path'], $vision_analysis['screenshot_bytes'] );
+			}
 
 			$wpdb->insert(
 				$table,
@@ -168,10 +194,11 @@ class BWG_AI_Ad_Surface {
 					'run_dates'        => $run_dates,
 					'spend_range'      => $spend_range,
 					'compliance_flags' => wp_json_encode( $flags ),
+					'vision_analysis'  => wp_json_encode( $vision_analysis ),
 					'user_confirmed'   => 0,
 					'source'           => $source,
 				],
-				[ '%d', '%s', '%s', '%s', '%s', '%s', '%s', '%d', '%s', '%s', '%s', '%d', '%s' ]
+				[ '%d', '%s', '%s', '%s', '%s', '%s', '%s', '%d', '%s', '%s', '%s', '%s', '%d', '%s' ]
 			);
 
 			if ( $wpdb->insert_id ) {

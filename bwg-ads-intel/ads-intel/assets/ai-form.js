@@ -741,10 +741,15 @@
 			? '<div class="bwg-ai-ad-meta">' + metaParts.join( ' &nbsp;·&nbsp; ' ) + '</div>'
 			: '';
 
+		var visionBadge = ad.vision_analyzed
+			? '<span class="bwg-ai-vision-badge" title="Ad creative was reviewed by AI vision analysis">👁 AI-reviewed</span>'
+			: '';
+
 		return '<div class="bwg-ai-ad-card' + cardExtra + '" data-ad-id="' + esc( adId ) + '">' +
 			'<div class="bwg-ai-ad-card-top">' +
 				'<span class="bwg-ai-platform-badge ' + esc( ad.platform || 'meta' ) + '">' + esc( ad.platform || 'meta' ) + '</span>' +
 				flagBadge +
+				visionBadge +
 				'<span class="bwg-ai-card-state-label confirmed-label">✓ Confirmed</span>' +
 				'<span class="bwg-ai-card-state-label flagged-label">✗ Not mine</span>' +
 			'</div>' +
@@ -765,7 +770,7 @@
 		shown.forEach( function ( f ) {
 			html += '<div class="bwg-ai-ad-flag-row ' + esc( f.severity ) + '">' +
 				'<span class="bwg-ai-flag-dot"></span>' +
-				'<span>' + esc( f.description ) + '</span>' +
+				'<span>' + ( f.source === 'vision' ? '👁 ' : '' ) + esc( f.description ) + '</span>' +
 				'</div>';
 		} );
 		if ( flags.length > 3 ) {

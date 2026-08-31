@@ -71,6 +71,7 @@ class BWG_AI_Admin {
 		register_setting( 'bwg_ai_api', 'bwg_ai_meta_ad_library_token', [ 'sanitize_callback' => [ $this, 'sanitize_and_encrypt_secret' ] ] );
 		register_setting( 'bwg_ai_api', 'bwg_ai_screenshot_api_url',   [ 'sanitize_callback' => 'sanitize_url' ] );
 		register_setting( 'bwg_ai_api', 'bwg_ai_screenshot_api_key',   [ 'sanitize_callback' => [ $this, 'sanitize_and_encrypt_secret' ] ] );
+		register_setting( 'bwg_ai_api', 'bwg_ai_claude_api_key',       [ 'sanitize_callback' => [ $this, 'sanitize_and_encrypt_secret' ] ] );
 
 		// Storage / Maintenance.
 		register_setting( 'bwg_ai_storage_settings', 'bwg_ai_storage_warning_gb',        [ 'sanitize_callback' => 'absint' ] );

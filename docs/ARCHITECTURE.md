@@ -117,9 +117,6 @@ private function send( $to, $subject, $html, $text = '' ) {
 2. It must be a long-lived token — WordPress does not refresh short-lived tokens automatically.
 3. If the token is absent, `BWG_AI_Ad_Surface::run()` skips the automated lookup entirely and the front-end falls back to manual ad entry (see §1). There is no scraper fallback (no Playwright, no headless browser anywhere in this plugin).
 
-**Not yet built (Phase 2, later milestones):**
-- Claude vision compliance on ad creative — M13.
-
 ## 5b. Google Ads Transparency (M12)
 
 **Decision:** No bulk data API equivalent to Meta's `ads_archive` exists for Google (the "Ads Transparency Insights API" referenced in the pre-M11 EntityIQ-era docs was never confirmed generally available). Rather than reintroduce an EntityIQ-shaped dependency (a job queue calling a headless browser this plugin would have to run itself), M12 captures the advertiser's Google Ads Transparency Center domain-search results page (`https://adstransparency.google.com/?region=anywhere&domain={domain}`) through a **render-provider abstraction** and stores it as a single screenshot-backed ad record.
@@ -131,6 +128,28 @@ private function send( $to, $subject, $html, $text = '' ) {
 **Manual fallback:** identical pattern to Meta (§1) — when no screenshot API is configured, `BWG_AI_Google_Transparency::is_configured()` is false, the automated capture is skipped, and the front-end offers manual entry (paste a Transparency Center ad URL + optional copy) via the same `POST /manual-ads` endpoint, now parameterized by `platform`.
 
 **Orchestration:** `BWG_AI_Ad_Surface::run()` calls Meta and Google independently — one being unconfigured never blocks the other. `GET /ad-surface-status/{id}` reports `meta_configured` and `google_configured` separately so the front-end can offer manual entry per-platform.
+
+---
+
+## 6. Claude Vision Compliance (M13)
+
+**Decision:** Text compliance (`class-bwg-ai-compliance.php`, regex rules on ad copy) can't catch a HIPAA problem baked into the creative itself — a before/after photo pair, an on-camera patient testimonial, an outcome-guarantee badge rendered as a graphic. `class-bwg-ai-vision.php` sends the ad's actual image to the Claude API (Messages API, vision content block) with a HIPAA/42-CFR-Part-2/FTC-focused system prompt and parses the response into the same flag shape as the text rules, tagged `source: 'vision'` so the gallery shows one merged list.
+
+**Why raw HTTP, not the Anthropic PHP SDK:** every other external API call in this plugin (Meta Graph API, Google Places, Cloudflare Turnstile, the M12 screenshot render API) is a plain `wp_remote_get()`/`wp_remote_post()` call — this plugin has no Composer/`vendor/` dependency tree, and adding one just for this call would require site owners to run `composer install` and would break the plugin's zip-and-activate WordPress packaging convention. `class-bwg-ai-vision.php` calls `POST https://api.anthropic.com/v1/messages` directly (model `claude-opus-5`, `x-api-key`/`anthropic-version` headers) instead.
+
+**Credential:** `bwg_ai_claude_api_key` (Settings → API Keys), encrypted at rest, same pattern as the other secret options. Resolved via `bwg_ai_get_claude_api_key()`.
+
+**Resolving a creative to analyze**, in order:
+1. A screenshot already captured this pass (Google Ads Transparency, §5b) — read straight off local disk via `BWG_AI_Screenshot_Store::full_path()`.
+2. `ad_image_url`, if a future ad source populates one (not currently set by the Meta client — kept for CSV imports / future sources).
+3. Meta's `ad_snapshot_url` — this is an HTML page, not an image, so it can't be sent directly. Reuses the **same render-provider abstraction from §5b** (`BWG_AI_Render_Provider::capture()`) to screenshot the page, then persists it through `BWG_AI_Screenshot_Store::save()` so it isn't re-captured on a later run and so the gallery can show it like any other screenshot. Requires the same `bwg_ai_screenshot_api_url`/`key` as Google Transparency — no separate credential.
+4. Nothing available → skip that ad's vision analysis (never blocks saving the ad itself).
+
+**Guard:** `BWG_AI_Vision::is_configured()` gates the whole feature — no key configured means vision is skipped entirely and only text compliance runs, same "unconfigured = silent fallback, never blocks" pattern as Meta/Google in §1/§5b.
+
+**Storage:** `wp_bwg_ai_ads.vision_analysis` (column existed unused since M0/M6; first real writer is M13) stores `{ analyzed: bool, reason?: string, flags: [...] }`. Vision flags are also merged into `compliance_flags` (with `source: 'vision'`, vs. `source: 'text'` for the regex rules) so the gallery's flag count and list are unified; the raw per-source split stays queryable via `vision_analysis` for anyone who needs it.
+
+**Where it runs:** `BWG_AI_Ad_Surface::save_ads()`, immediately after text compliance, for every ad from any source — API-fetched (Meta/Google) or manually pasted. Manual entries call this synchronously inside the `POST /manual-ads` REST request (bounded by the existing 25-ad-per-submission cap); API-fetched ads already run inside `bwg_ai_run_ad_surface`'s WP-Cron context. Both are acceptable latency-wise at current ad volumes — revisit if vision analysis needs to move off the request thread for manual entry at higher volumes.
 
 ---
 

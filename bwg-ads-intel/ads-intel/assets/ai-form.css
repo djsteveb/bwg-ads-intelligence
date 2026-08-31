@@ -692,6 +692,15 @@
 .bwg-ai-flag-badge.medium { background: var(--amber-light);  color: var(--amber); }
 .bwg-ai-flag-badge.low    { background: var(--surface2);     color: var(--ink3); }
 
+.bwg-ai-vision-badge {
+	font-size: 11px;
+	font-weight: 600;
+	padding: 2px 8px;
+	border-radius: 12px;
+	background: var(--surface2);
+	color: var(--teal, #0d7d7d);
+}
+
 /* ============================================================
    AD IMAGE AREA
    ============================================================ */

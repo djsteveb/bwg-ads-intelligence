@@ -359,3 +359,10 @@ function bwg_ai_get_screenshot_api_url(): string {
 function bwg_ai_get_screenshot_api_key(): string {
 	return bwg_ai_decrypt_secret( (string) get_option( 'bwg_ai_screenshot_api_key', '' ) );
 }
+
+/**
+ * Resolve the Anthropic API key used for vision compliance analysis (M13).
+ */
+function bwg_ai_get_claude_api_key(): string {
+	return bwg_ai_decrypt_secret( (string) get_option( 'bwg_ai_claude_api_key', '' ) );
+}

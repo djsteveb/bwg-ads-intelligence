@@ -307,7 +307,7 @@ class BWG_AI_Rest {
 		$ads = $wpdb->get_results(
 			$wpdb->prepare(
 				"SELECT id, platform, ad_id, ad_copy, ad_image_url, ad_snapshot_url, screenshot_path,
-				        run_dates, spend_range, user_confirmed, compliance_flags, source
+				        run_dates, spend_range, user_confirmed, compliance_flags, vision_analysis, source
 				 FROM `{$wpdb->prefix}bwg_ai_ads`
 				 WHERE session_id = %d
 				 ORDER BY platform, id",
@@ -318,6 +318,9 @@ class BWG_AI_Rest {
 		$formatted = array_map( function ( $ad ) {
 			$ad->compliance_flags = json_decode( $ad->compliance_flags, true ) ?? [];
 			$ad->screenshot_url   = $ad->screenshot_path ? bwg_ai_screenshot_url( $ad->id ) : '';
+			$vision                = json_decode( $ad->vision_analysis, true );
+			$ad->vision_analyzed   = ! empty( $vision['analyzed'] );
+			unset( $ad->vision_analysis, $ad->screenshot_path );
 			return $ad;
 		}, $ads );
 

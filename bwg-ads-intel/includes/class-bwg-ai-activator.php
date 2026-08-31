@@ -205,6 +205,7 @@ class BWG_AI_Activator {
 		add_option( 'bwg_ai_from_email', get_option( 'admin_email' ) );
 		add_option( 'bwg_ai_google_places_key', '' );
 		add_option( 'bwg_ai_meta_ad_library_token', '' );
+		add_option( 'bwg_ai_claude_api_key', '' );
 		add_option( 'bwg_ai_captcha_site_key', '' );
 		add_option( 'bwg_ai_captcha_secret_key', '' );
 		add_option( 'bwg_ai_schedule_url', '' );

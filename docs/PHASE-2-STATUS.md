@@ -33,8 +33,8 @@ milestone genuinely needs one.
 |---|---|---|
 | M11 | Meta Ad Library — direct Graph API `ads_archive` call, drop EntityIQ job queue/webhook, manual-entry fallback | ✅ Complete (2026-08-31) |
 | M12 | Google Ads Transparency (render-provider abstraction) + local screenshot storage subsystem (backup, delete-by-range, delete-by-age) | ✅ Complete (2026-08-31) |
-| M13 | Claude vision compliance on ad creative — port the pattern from BWG-Ads-Acount-Audit's `class-bwg-maa-vision.php`, HIPAA-focused prompt | Next |
-| M14 | PDF export (browser print-to-PDF, same report source) + 4 remaining audience reports | Planned |
+| M13 | Claude vision compliance on ad creative — HIPAA-focused prompt, reuses the M12 render provider for Meta ad snapshots | ✅ Complete (2026-08-31) |
+| M14 | PDF export (browser print-to-PDF, same report source) + 4 remaining audience reports | Next |
 | M15 | LinkedIn/TikTok ad surface — after a ToS review spike | Planned |
 | — | Bing/Microsoft Ads Transparency | Cut — no public data source exists |
 
@@ -110,6 +110,37 @@ Full milestone specs are in `docs/PHASE-2-BUILD-PLAN.md`.
 
 ---
 
+## What M13 changed
+
+- **New:** `ads-intel/class-bwg-ai-vision.php` — sends each ad's creative to
+  the Claude API (`claude-opus-5`, raw `wp_remote_post()` to
+  `api.anthropic.com/v1/messages` — no PHP SDK, matching every other
+  external API call in this plugin, since there's no Composer/`vendor/`
+  tree to add one to) with a HIPAA/42-CFR-Part-2/FTC-focused system prompt,
+  parses the JSON-array response into the same flag shape as text
+  compliance (tagged `source: 'vision'`).
+- Creative resolution order: an already-captured local screenshot (Google
+  Transparency) → `ad_image_url` (not currently populated, kept for future
+  sources) → for Meta, **reuses the M12 render-provider** to screenshot
+  `ad_snapshot_url` (an HTML page, not a raw image) and persists it through
+  the same screenshot store so it isn't re-captured later. No creative
+  available → that ad's vision step is skipped, never blocks saving it.
+- **New setting:** `bwg_ai_claude_api_key` (Settings → API Keys), encrypted
+  at rest. Empty key → `BWG_AI_Vision::is_configured()` is false → vision is
+  skipped entirely, same silent-fallback pattern as Meta/Google.
+- **Wired into** `BWG_AI_Ad_Surface::save_ads()` right after text
+  compliance, for every ad regardless of source (API-fetched or manually
+  pasted). Vision flags are merged into `compliance_flags` (now every flag
+  carries `source: 'text'` or `'vision'`) and the full result is also kept
+  separately in `wp_bwg_ai_ads.vision_analysis` (column existed unused since
+  M0 — M13 is its first real writer).
+- **UI:** ad cards show a "👁 AI-reviewed" badge when vision ran; vision-
+  sourced flags get a 👁 marker in the mini flag list; admin session detail
+  shows per-ad vision status.
+- **Docs:** `docs/ARCHITECTURE.md` new §6.
+
+---
+
 ## Known follow-ups (not blocking)
 
 - `wp_bwg_ai_sessions.entityiq_job_id` column is still unused dead schema
@@ -118,3 +149,6 @@ Full milestone specs are in `docs/PHASE-2-BUILD-PLAN.md`.
 - Google Transparency captures are one screenshot per advertiser standing in
   for the whole result set, not per-ad records like Meta. Revisit if a real
   per-ad Google data source becomes available.
+- Vision analysis for manually-pasted ads runs synchronously inside
+  `POST /manual-ads` (bounded by the existing 25-ad cap). Fine at current
+  volumes; move off the request thread if that stops being true.

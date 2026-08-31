@@ -69,24 +69,36 @@ pattern as M11's Meta token, with a manual-entry fallback when unconfigured.
 
 ---
 
-## Milestone 13 — Claude Vision Compliance
+## Milestone 13 — Claude Vision Compliance ✅ Complete
 
 **Exit criteria:** `wp_bwg_ai_ads.vision_analysis` is populated for ads that
 have a usable creative (image or Meta ad snapshot), with HIPAA-focused flags
 surfacing in the same gallery UI as the text compliance flags.
 
-**Reference implementation:** port the pattern from BWG-Ads-Acount-Audit's
-`class-bwg-maa-vision.php` (separate repo — this plugin does not depend on
-it; port the *pattern*, not a live cross-plugin call). Same shape as
-`class-bwg-ai-compliance.php`'s text rules: `{ rule_id, severity, category,
-excerpt, citation }`, but sourced from a vision model call instead of regex.
+**Reference implementation note:** BWG-Ads-Acount-Audit's
+`class-bwg-maa-vision.php` (separate repo) was not reachable from this
+session, so the flag shape was built to match `class-bwg-ai-compliance.php`'s
+existing text rules directly — `{ rule_id, severity, category, description,
+excerpt, citation }` plus a `source: 'text'|'vision'` tag added to both so
+the merged list is unambiguous — rather than attempting to port unseen code.
+
+**SDK decision:** raw `wp_remote_post()` to `api.anthropic.com/v1/messages`,
+not the Anthropic PHP SDK — this plugin has no Composer/`vendor/` tree and
+every other external call (Meta, Google Places, Turnstile, the M12
+screenshot API) is already a plain `wp_remote_*()` call; adding a Composer
+dependency just for this one would be inconsistent with the rest of the
+plugin and would require site owners to run `composer install`. See
+`docs/ARCHITECTURE.md` §6.
 
 | File | What it does |
 |---|---|
-| `ads-intel/class-bwg-ai-vision.php` (new) | Calls the Claude API (`claude-sonnet-5` or newer) with the ad creative (image URL or Meta ad snapshot) and a HIPAA-focused system prompt. Parses structured flags from the response. |
+| `ads-intel/class-bwg-ai-vision.php` (new) | Calls the Claude API (`claude-opus-5`) with the ad creative and a HIPAA-focused system prompt; parses the JSON-array response into flags. Resolves the creative from an already-captured screenshot, `ad_image_url`, or — for Meta — a fresh render-provider capture of `ad_snapshot_url` (reuses M12's `BWG_AI_Render_Provider`, since that's an HTML page not an image). |
 | `includes/class-bwg-ai-security.php` | `bwg_ai_get_claude_api_key()` — new encrypted-at-rest option, same pattern as the other API keys. |
 | `admin/partials/admin-settings.php` | Claude API key field in the API Keys tab. |
-| `ads-intel/class-bwg-ai-ad-surface.php` | Call vision analysis after text compliance in `save_ads()`, guarded by whether a key is configured (skip silently, don't block ad saving, if not). |
+| `ads-intel/class-bwg-ai-ad-surface.php` | Calls vision analysis after text compliance in `save_ads()` for every ad (API-fetched or manual), guarded by `BWG_AI_Vision::is_configured()` — skips silently, never blocks ad saving, if unconfigured. Merges vision flags into `compliance_flags`; persists the full result to `vision_analysis`. |
+| `ads-intel/class-bwg-ai-rest.php` | `GET /ads/{id}` exposes a `vision_analyzed` bool per ad. |
+| `ads-intel/assets/ai-form.js` | "👁 AI-reviewed" badge on ad cards; 👁 marker on vision-sourced flags. |
+| `admin/partials/admin-detail.php` | Per-ad vision status in the session detail view. |
 
 ---
 

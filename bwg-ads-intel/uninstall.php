@@ -40,6 +40,7 @@ $options = [
 	'bwg_ai_screenshot_api_url',
 	'bwg_ai_screenshot_api_key',
 	'bwg_ai_screenshot_retention_days',
+	'bwg_ai_claude_api_key',
 	'bwg_ai_captcha_site_key',
 	'bwg_ai_captcha_secret_key',
 	'bwg_ai_booking_url',
