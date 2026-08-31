@@ -59,7 +59,12 @@ function bwg_ai_render_session_detail( $session_id ) {
 				</tr>
 				<tr>
 					<th>Access Code</th><td><code><?php echo esc_html( $session['access_code'] ); ?></code></td>
-					<th>Meta Ad Library</th><td><?php echo esc_html( BWG_AI_Meta_Ad_Library::is_configured() ? 'API configured' : 'Manual entry (no token)' ); ?></td>
+					<th>Ad Surface</th>
+					<td>
+						Meta: <?php echo esc_html( BWG_AI_Meta_Ad_Library::is_configured() ? 'API' : 'manual' ); ?>
+						&nbsp;·&nbsp;
+						Google: <?php echo esc_html( BWG_AI_Google_Transparency::is_configured() ? 'render API' : 'manual' ); ?>
+					</td>
 				</tr>
 				<tr>
 					<th>Created</th><td><?php echo esc_html( $session['created_at'] ); ?></td>
@@ -190,8 +195,11 @@ function bwg_ai_render_session_detail( $session_id ) {
 			?>
 			<div style="background:#fff;border:1px solid #ddd;border-radius:6px;overflow:hidden;font-size:13px;">
 				<?php if ( $ad['screenshot_path'] || $ad['ad_image_url'] ) : ?>
-					<img src="<?php echo esc_url( $ad['screenshot_path'] ?: $ad['ad_image_url'] ); ?>"
+					<img src="<?php echo esc_url( $ad['screenshot_path'] ? bwg_ai_screenshot_url( $ad['id'] ) : $ad['ad_image_url'] ); ?>"
 					     alt="" style="width:100%;height:130px;object-fit:cover;display:block;">
+					<?php if ( $ad['screenshot_bytes'] ) : ?>
+						<div style="font-size:10px;color:#999;padding:2px 8px;"><?php echo esc_html( size_format( (int) $ad['screenshot_bytes'] ) ); ?></div>
+					<?php endif; ?>
 				<?php elseif ( ! empty( $ad['ad_snapshot_url'] ) ) : ?>
 					<div style="height:60px;background:#f5f4f0;display:flex;align-items:center;justify-content:center;font-size:12px;">
 						<a href="<?php echo esc_url( $ad['ad_snapshot_url'] ); ?>" target="_blank" rel="noopener">View Ad Snapshot &#8599;</a>

@@ -67,6 +67,14 @@ class BWG_AI_Rest {
 			'permission_callback' => [ $this, 'require_nonce' ],
 		] );
 
+		// Screenshot serving (signed URL auth — no WP nonce, see bwg_ai_screenshot_url()).
+		register_rest_route( $ns, $b . '/screenshot/(?P<id>\d+)', [
+			'methods'             => 'GET',
+			'callback'            => [ $this, 'get_screenshot' ],
+			'permission_callback' => '__return_true',
+			'args'                => [ 'id' => [ 'validate_callback' => 'is_numeric' ] ],
+		] );
+
 		// Phase 5 — Access Funnel
 		register_rest_route( $ns, $b . '/access-status', [
 			'methods'             => 'POST',
@@ -277,11 +285,12 @@ class BWG_AI_Rest {
 		);
 
 		return new WP_REST_Response( [
-			'session_id'      => $session->id,
-			'step'            => (int) $session->step_completed,
-			'status'          => $session->status,
-			'ads_found'       => $ad_count,
-			'meta_configured' => BWG_AI_Meta_Ad_Library::is_configured(),
+			'session_id'        => $session->id,
+			'step'              => (int) $session->step_completed,
+			'status'            => $session->status,
+			'ads_found'         => $ad_count,
+			'meta_configured'   => BWG_AI_Meta_Ad_Library::is_configured(),
+			'google_configured' => BWG_AI_Google_Transparency::is_configured(),
 		], 200 );
 	}
 
@@ -308,10 +317,59 @@ class BWG_AI_Rest {
 
 		$formatted = array_map( function ( $ad ) {
 			$ad->compliance_flags = json_decode( $ad->compliance_flags, true ) ?? [];
+			$ad->screenshot_url   = $ad->screenshot_path ? bwg_ai_screenshot_url( $ad->id ) : '';
 			return $ad;
 		}, $ads );
 
 		return new WP_REST_Response( [ 'session_id' => $session->id, 'ads' => $formatted ], 200 );
+	}
+
+	/**
+	 * GET /screenshot/{id}
+	 * Streams a stored screenshot file. Auth is a short-lived HMAC-signed
+	 * URL (see bwg_ai_screenshot_url()) rather than a WP nonce, since this
+	 * is loaded directly by <img> tags that can't attach custom headers.
+	 */
+	public function get_screenshot( WP_REST_Request $request ) {
+		$ad_id   = absint( $request->get_param( 'id' ) );
+		$expires = absint( $request->get_param( 'expires' ) );
+		$sig     = sanitize_text_field( (string) $request->get_param( 'sig' ) );
+
+		if ( ! $ad_id || ! $expires || ! $sig ) {
+			return $this->error( 'invalid_request', 'Missing signature.', 400 );
+		}
+		if ( $expires < time() ) {
+			return $this->error( 'link_expired', 'This screenshot link has expired.', 410 );
+		}
+		if ( ! hash_equals( bwg_ai_sign_screenshot_url( $ad_id, $expires ), $sig ) ) {
+			return $this->error( 'invalid_signature', 'Invalid signature.', 403 );
+		}
+
+		global $wpdb;
+		$path = $wpdb->get_var(
+			$wpdb->prepare(
+				"SELECT screenshot_path FROM `{$wpdb->prefix}bwg_ai_ads` WHERE id = %d LIMIT 1",
+				$ad_id
+			)
+		);
+
+		$full = $path ? BWG_AI_Screenshot_Store::full_path( $path ) : false;
+		if ( ! $full ) {
+			return $this->error( 'not_found', 'Screenshot not found.', 404 );
+		}
+
+		$filetype = wp_check_filetype( $full );
+		$mime     = $filetype['type'] ?: 'application/octet-stream';
+
+		nocache_headers();
+		header( 'Content-Type: ' . $mime );
+		header( 'Content-Length: ' . filesize( $full ) );
+		header( 'X-Content-Type-Options: nosniff' );
+		header( 'Content-Disposition: inline' );
+
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_readfile -- streaming a local, path-validated image file.
+		readfile( $full );
+		exit;
 	}
 
 	/**
@@ -395,7 +453,11 @@ class BWG_AI_Rest {
 			return $session;
 		}
 
-		$entries = $request->get_param( 'ads' ); // [ { ad_snapshot_url, ad_copy? } ]
+		$entries  = $request->get_param( 'ads' ); // [ { ad_snapshot_url, ad_copy? } ]
+		$platform = sanitize_text_field( $request->get_param( 'platform' ) ?: 'meta' );
+		if ( ! in_array( $platform, [ 'meta', 'google' ], true ) ) {
+			return $this->error( 'invalid_platform', 'Invalid platform.', 400 );
+		}
 		if ( ! is_array( $entries ) || empty( $entries ) ) {
 			return $this->error( 'invalid_data', 'ads must be a non-empty array.', 400 );
 		}
@@ -404,7 +466,7 @@ class BWG_AI_Rest {
 			return $this->error( 'too_many', 'Please submit 25 ads or fewer at a time.', 400 );
 		}
 
-		$saved = ( new BWG_AI_Ad_Surface() )->save_manual_ads( $session->id, $entries );
+		$saved = ( new BWG_AI_Ad_Surface() )->save_manual_ads( $session->id, $platform, $entries );
 
 		BWG_AI_Session::log( $session->id, 'manual_ads_submitted', "{$saved} manually entered ads saved." );
 

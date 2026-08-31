@@ -23,32 +23,29 @@ Decisions locked before build. Change here and in CLAUDE.md if anything shifts m
 
 **Ad snapshots:** Meta hosts its own rendered snapshot of every ad at `ad_snapshot_url` (returned by `ads_archive` and stored in `wp_bwg_ai_ads.ad_snapshot_url`). The gallery UI links out to it directly instead of capturing a screenshot — there's no Playwright/EntityIQ screenshot step in this pipeline.
 
-**Historical note:** `wp_bwg_ai_sessions.entityiq_job_id` and the `/entityiq-webhook` REST route (removed in M11) were specific to the abandoned async design and are not used by anything currently in the plugin.
+**Historical note:** `wp_bwg_ai_sessions.entityiq_job_id`, the `/entityiq-webhook` REST route, and the `bwg_ai_entityiq_url`/`bwg_ai_entityiq_secret` options (all removed in M11/M12) were specific to the abandoned async design and are not used by anything currently in the plugin. The `entityiq_job_id` DB column itself is left in place rather than a destructive migration — safe to drop in a future DB version bump.
 
 ---
 
 ## 2. Screenshot Storage
 
-**Decision:** Local disk on the EntityIQ server. WP admin has a storage dashboard.
+**Decision (rewritten M12):** Local disk, on the WordPress server itself — there is no EntityIQ server to store anything on (see §1). WP admin has a Storage dashboard backed directly by the local filesystem and the `wp_bwg_ai_ads` table, no external service involved.
 
-**EntityIQ side:**
-- Screenshots saved to: `{ENTITYIQ_DATA_DIR}/bwg-screenshots/{YYYY-MM-DD}/{session_id}/`
-- Env var: `BWG_SCREENSHOT_DIR=/var/data/bwg-screenshots`
-- Each screenshot record: filename, file size (bytes), session_id, platform, ad_id, captured_at
+**Where files live:** `wp-content/uploads/bwg-ai-screenshots/{YYYY-MM-DD}/{session_id}/{platform}-{random}.{ext}` (via `wp_upload_dir()`, so it follows whatever the site's uploads base is, including any `WP_CONTENT_DIR`/multisite overrides). The top-level `bwg-ai-screenshots/` directory gets an `.htaccess` (`Deny from all`) and `index.php` the first time anything is saved there, so files are never reachable by a direct URL guess — see `BWG_AI_Screenshot_Store::base_dir()`.
 
-**WordPress side:**
-- `wp_bwg_ai_ads.screenshot_path` stores the relative path (e.g. `2024-01-15/sess_abc123/meta_ad_001.png`)
-- EntityIQ exposes a signed URL endpoint for WP admin to display screenshots: `GET /ads/screenshot/:path?sig=...&expires=...`
-- Admin dashboard storage panel (in M10) queries EntityIQ `GET /ads/storage/stats` which returns:
-  - Total storage used (bytes)
-  - Storage by week (array of `{ week_start, bytes, file_count }`)
-- Export by date range: `GET /ads/storage/export?from=YYYY-MM-DD&to=YYYY-MM-DD` — returns zip of screenshots + CSV manifest
-- Delete by date range: `DELETE /ads/storage?from=YYYY-MM-DD&to=YYYY-MM-DD` — deletes files and nulls `screenshot_path` in WP DB via webhook callback
+**What actually writes screenshots:** only Google Ads Transparency captures (§5) — Meta links to its own hosted `ad_snapshot_url` and never touches this pipeline (§1). If a future milestone (LinkedIn/TikTok, M15) needs a captured screenshot too, it goes through the same `BWG_AI_Screenshot_Store::save()` / `BWG_AI_Render_Provider` pair rather than inventing a new storage path.
 
-**For the EntityIQ agent:** Add these storage routes to `entityiq-extension/routes/ads.js`:
-- `GET /ads/storage/stats`
-- `GET /ads/storage/export`
-- `DELETE /ads/storage`
+**Serving:** never a direct file URL. `wp_bwg_ai_ads.screenshot_path` stores the relative path; `GET /wp-json/bwg/v1/ai/screenshot/{ad_id}` streams the file after checking a short-lived HMAC-signed `sig`+`expires` query pair (`bwg_ai_screenshot_url()` / `bwg_ai_sign_screenshot_url()` in `class-bwg-ai-security.php`, 2-hour TTL). `GET /ads/{id}` includes a freshly-signed `screenshot_url` on every response rather than the raw path, so `<img>` tags (which can't send custom auth headers) just work.
+
+**Byte tracking:** `wp_bwg_ai_ads.screenshot_bytes` is set at save time (from `file_put_contents()`'s return value) — stats are a `SUM()` over that column, not a filesystem walk. `BWG_AI_Screenshot_Store::stats()` returns total bytes + a 7-day daily breakdown, rendered on **WP Admin → Ads Intelligence → Storage** as a usage bar (against the existing `bwg_ai_storage_warning_gb` threshold) and a bar chart.
+
+**Backup:** the Storage page's "Backup / Export Screenshots" card builds a ZIP (`BWG_AI_Screenshot_Store::export_zip()`, requires the `ZipArchive` PHP extension) of every screenshot in a date range plus a CSV manifest (`session_id, platform, ad_id, path, bytes, created_at`), streamed as a download via an `admin-post.php` handler (`BWG_AI_Admin::handle_storage_export()`) and deleted from disk immediately after.
+
+**Delete / retention:**
+- Manual: the Storage page has two delete actions — by explicit date range, and "older than N days" — both backed by `BWG_AI_Screenshot_Store::prune_range()` / `prune_older_than()`, which delete the file and null `screenshot_path`/`screenshot_bytes` in the same pass.
+- Automatic: `bwg_ai_screenshot_retention_days` (Settings → Storage; default `0` = keep indefinitely). When set, `BWG_AI_Admin::daily_maintenance()` calls `prune_older_than()` on every run.
+- Every delete (manual or automatic) is written to `wp_bwg_ai_audit_log`.
+- The storage-warning email (`bwg_ai_storage_warning_gb`) is unchanged in spirit from the MVP design — it fires from the same daily maintenance cron once total bytes cross the threshold — just computed locally now instead of via an EntityIQ API call.
 
 ---
 
@@ -121,22 +118,32 @@ private function send( $to, $subject, $html, $text = '' ) {
 3. If the token is absent, `BWG_AI_Ad_Surface::run()` skips the automated lookup entirely and the front-end falls back to manual ad entry (see §1). There is no scraper fallback (no Playwright, no headless browser anywhere in this plugin).
 
 **Not yet built (Phase 2, later milestones):**
-- Google Ads Transparency — M12, via a render-provider abstraction (not decided yet whether that's a direct API call or a hosted render service; EntityIQ is not assumed).
 - Claude vision compliance on ad creative — M13.
-- Screenshot capture for platforms that don't host their own ad snapshot (Meta doesn't need this — see §1) — evaluated per-platform in M12+ as needed, not a blanket EntityIQ dependency.
+
+## 5b. Google Ads Transparency (M12)
+
+**Decision:** No bulk data API equivalent to Meta's `ads_archive` exists for Google (the "Ads Transparency Insights API" referenced in the pre-M11 EntityIQ-era docs was never confirmed generally available). Rather than reintroduce an EntityIQ-shaped dependency (a job queue calling a headless browser this plugin would have to run itself), M12 captures the advertiser's Google Ads Transparency Center domain-search results page (`https://adstransparency.google.com/?region=anywhere&domain={domain}`) through a **render-provider abstraction** and stores it as a single screenshot-backed ad record.
+
+**`class-bwg-ai-render-provider.php`:** a thin, vendor-agnostic client — any hosted screenshot API whose endpoint accepts `?url=&access_key=` and returns raw image bytes works (ScreenshotOne, ApiFlash, urlbox.io, etc. are all compatible without code changes). Configured via `bwg_ai_screenshot_api_url` + `bwg_ai_screenshot_api_key` (Settings → API Keys), the key encrypted at rest.
+
+**`class-bwg-ai-google-transparency.php`:** builds the domain-search URL from the session's website hostname, calls the render provider, saves the returned image via `BWG_AI_Screenshot_Store::save()` (see §2), and returns one normalized ad record (`platform = 'google'`) whose `ad_copy` explicitly says it's a full-page capture standing in for the whole result set, not per-ad detail — this is coarser than Meta's per-ad records, and the report/compliance UI should not imply otherwise.
+
+**Manual fallback:** identical pattern to Meta (§1) — when no screenshot API is configured, `BWG_AI_Google_Transparency::is_configured()` is false, the automated capture is skipped, and the front-end offers manual entry (paste a Transparency Center ad URL + optional copy) via the same `POST /manual-ads` endpoint, now parameterized by `platform`.
+
+**Orchestration:** `BWG_AI_Ad_Surface::run()` calls Meta and Google independently — one being unconfigured never blocks the other. `GET /ad-surface-status/{id}` reports `meta_configured` and `google_configured` separately so the front-end can offer manual entry per-platform.
 
 ---
 
 ## Storage Admin Dashboard — Detailed Spec
 
-The admin storage panel (part of M10) lives at **WP Admin → Ads Intelligence → Storage**.
+The admin storage panel (part of M10, rewritten for local storage in M12) lives at **WP Admin → Ads Intelligence → Storage**. Full detail in §2 — summary:
 
 | Feature | Implementation |
 |---|---|
-| Total storage used | EntityIQ `GET /ads/storage/stats` → display formatted bytes |
-| Storage by week | Bar chart or table of `{ week_start, bytes, file_count }` |
-| Export date range | Date pickers → `GET /ads/storage/export?from=&to=` → download zip |
-| Delete date range | Date pickers + confirmation modal → `DELETE /ads/storage?from=&to=` → EntityIQ deletes files, webhooks WP to null screenshot_path values |
-| Storage warning threshold | Admin setting: alert if total > N GB (default 10 GB) |
-
-EntityIQ must implement all four storage routes (stats, export, delete, webhook callback on delete completion).
+| Total storage used | `BWG_AI_Screenshot_Store::stats()` — `SUM(screenshot_bytes)` over `wp_bwg_ai_ads`, no filesystem walk |
+| Storage by week | 7-day daily breakdown from the same query, rendered as a bar chart |
+| Backup / export date range | Date pickers → `admin-post.php?action=bwg_ai_storage_export` → streams a ZIP (files + CSV manifest) |
+| Delete by date range | Date pickers + confirmation modal → `BWG_AI_Screenshot_Store::prune_range()` |
+| Delete older than N days | Quick action + confirmation modal → `BWG_AI_Screenshot_Store::prune_older_than()` |
+| Auto-delete by retention | `bwg_ai_screenshot_retention_days` setting (0 = off) → applied every run of `bwg_ai_daily_maintenance` |
+| Storage warning threshold | Admin setting `bwg_ai_storage_warning_gb` (default 10 GB): daily maintenance emails the admin once total bytes cross it |

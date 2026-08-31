@@ -400,7 +400,7 @@
 	}
 
 	/* ------------------------------------------------------------------ */
-	/* Step 3 — Ad surface loading (EntityIQ running, polls for completion)*/
+	/* Step 3 — Ad surface loading (Meta/Google lookups running, polls for completion)*/
 	/* ------------------------------------------------------------------ */
 	function renderStep3() {
 		state.step = 3;
@@ -455,7 +455,8 @@
 			.done( function ( res ) {
 				var dbStep   = parseInt( res.step, 10 );
 				var adsFound = parseInt( res.ads_found, 10 );
-				state.metaConfigured = !! res.meta_configured;
+				state.metaConfigured   = !! res.meta_configured;
+				state.googleConfigured = !! res.google_configured;
 
 				if ( dbStep >= 2 || adsFound > 0 ) {
 					clearAdSurfacePoll();
@@ -464,10 +465,11 @@
 					return;
 				}
 
-				// No automated Meta Ad Library lookup is possible without a
-				// token configured — skip straight to the manual-entry flow
-				// instead of polling for up to 10 minutes for nothing.
-				if ( ! state.metaConfigured ) {
+				// No automated lookup is possible for either platform without
+				// a token/API key configured — skip straight to the
+				// manual-entry flow instead of polling for up to 10 minutes
+				// for nothing.
+				if ( ! state.metaConfigured && ! state.googleConfigured ) {
 					clearAdSurfacePoll();
 					setTimeout( renderStep4, 400 );
 					return;
@@ -499,8 +501,16 @@
 
 	function manualAdsFormHtml( suffix ) {
 		var id = function ( base ) { return 'bwg-ai-' + base + '-' + suffix; };
+		// Default the platform picker to whichever platform has no automated
+		// lookup configured, when only one needs it.
+		var defaultPlatform = state.metaConfigured === false ? 'meta' : ( state.googleConfigured === false ? 'google' : 'meta' );
 		return '<div class="bwg-ai-manual-ads-form" id="' + id( 'manual-form' ) + '">' +
-			'<p style="font-size:14px;color:var(--ink2);margin-bottom:16px;font-weight:500;">Paste the URL of each ad from the Meta Ad Library, plus the ad copy if you have it.</p>' +
+			'<p style="font-size:14px;color:var(--ink2);margin-bottom:12px;font-weight:500;">Paste the URL of each ad, plus the ad copy if you have it.</p>' +
+			'<label style="display:block;font-size:12px;font-weight:600;margin-bottom:4px;">Platform</label>' +
+			'<select class="bwg-ai-manual-platform" id="' + id( 'manual-platform' ) + '" style="margin-bottom:12px;">' +
+				'<option value="meta"' + ( defaultPlatform === 'meta' ? ' selected' : '' ) + '>Meta (Facebook/Instagram) — Ad Library</option>' +
+				'<option value="google"' + ( defaultPlatform === 'google' ? ' selected' : '' ) + '>Google — Ads Transparency Center</option>' +
+			'</select>' +
 			'<div class="bwg-ai-manual-rows" id="' + id( 'manual-rows' ) + '">' +
 				manualRowHtml( suffix, 0 ) +
 			'</div>' +
@@ -529,7 +539,8 @@
 		} );
 
 		$( id( 'manual-submit' ) ).on( 'click', function () {
-			var entries = [];
+			var platform = $( id( 'manual-platform' ) ).val() || 'meta';
+			var entries  = [];
 			for ( var i = 0; i < count[0]; i++ ) {
 				var url  = $( '#bwg-ai-manual-url-' + suffix + '-' + i ).val();
 				var copy = $( '#bwg-ai-manual-copy-' + suffix + '-' + i ).val();
@@ -538,13 +549,13 @@
 			}
 
 			if ( ! entries.length ) {
-				showNotice( 'Please paste at least one Ad Library URL.', 'info' );
+				showNotice( 'Please paste at least one ad URL.', 'info' );
 				return;
 			}
 
 			setLoading( id( 'manual-submit' ), true );
 
-			apiPost( '/manual-ads', { session_id: state.sessionId, ads: entries } )
+			apiPost( '/manual-ads', { session_id: state.sessionId, platform: platform, ads: entries } )
 				.done( function ( res ) {
 					showNotice( ( res.saved || entries.length ) + ' ad(s) saved.', 'success' );
 					setLoading( id( 'manual-submit' ), false );
@@ -593,11 +604,13 @@
 		var ads = state.ads;
 
 		if ( ! ads.length ) {
-			if ( state.metaConfigured === false ) {
+			var neitherConfigured = state.metaConfigured === false && state.googleConfigured === false;
+
+			if ( neitherConfigured ) {
 				$( '#bwg-ai-gallery-wrap' ).html(
 					'<div style="text-align:center;padding:32px 0 24px;">' +
 						'<p style="font-size:15px;color:var(--ink2);font-weight:500;margin-bottom:8px;">Automatic ad lookup isn\'t available yet.</p>' +
-						'<p style="font-size:13px;color:var(--ink3);max-width:420px;margin:0 auto;">Paste in links to your ads from the <a href="https://www.facebook.com/ads/library/" target="_blank" rel="noopener">Meta Ad Library</a> and we\'ll run compliance checks on them.</p>' +
+						'<p style="font-size:13px;color:var(--ink3);max-width:420px;margin:0 auto;">Paste in links to your ads from the <a href="https://www.facebook.com/ads/library/" target="_blank" rel="noopener">Meta Ad Library</a> or the <a href="https://adstransparency.google.com/" target="_blank" rel="noopener">Google Ads Transparency Center</a> and we\'ll run compliance checks on them.</p>' +
 					'</div>' +
 					manualAdsFormHtml( 'main' )
 				);
@@ -608,11 +621,17 @@
 			$( '#bwg-ai-gallery-wrap' ).html(
 				'<div style="text-align:center;padding:32px 0 24px;">' +
 					'<p style="font-size:15px;color:var(--ink2);font-weight:500;margin-bottom:8px;">No ads found yet.</p>' +
-					'<p style="font-size:13px;color:var(--ink3);max-width:400px;margin:0 auto;">This can happen if your Meta Ad Library page isn\'t publicly listed. Add your ad account details below so we can search more specifically.</p>' +
+					'<p style="font-size:13px;color:var(--ink3);max-width:400px;margin:0 auto;">This can happen if your ad accounts aren\'t publicly listed. Add your ad account details below so we can search more specifically' + ( state.metaConfigured === false || state.googleConfigured === false ? ', or paste in ads by hand for the platform we couldn\'t search automatically' : '' ) + '.</p>' +
 				'</div>' +
-				addAccountsFormHtml( 'main' )
+				addAccountsFormHtml( 'main' ) +
+				( ( state.metaConfigured === false || state.googleConfigured === false )
+					? '<div style="margin-top:20px;padding-top:20px;border-top:1px solid var(--border,#e5e2da);">' + manualAdsFormHtml( 'main2' ) + '</div>'
+					: '' )
 			);
 			bindAddAccountsForm( 'main' );
+			if ( state.metaConfigured === false || state.googleConfigured === false ) {
+				bindManualAdsForm( 'main2' );
+			}
 			return;
 		}
 
@@ -635,12 +654,16 @@
 				'</div>' +
 			'</div>' +
 			'<div class="bwg-ai-add-accounts-wrap">' +
-				( state.metaConfigured === false
-					? '<button class="bwg-ai-btn bwg-ai-btn-outline bwg-ai-btn-block" id="bwg-ai-toggle-manual-ads">+ Add More Ads Manually</button>' +
-					  '<div id="bwg-ai-manual-ads-panel" style="display:none;margin-top:16px;">' + manualAdsFormHtml( 'panel' ) + '</div>'
-					: '<button class="bwg-ai-btn bwg-ai-btn-outline bwg-ai-btn-block" id="bwg-ai-toggle-add-accounts">+ Add More Ad Accounts</button>' +
-					  '<div id="bwg-ai-add-accounts-panel" style="display:none;margin-top:16px;">' + addAccountsFormHtml( 'panel' ) + '</div>'
-				) +
+				'<div class="bwg-ai-btn-row">' +
+					'<button class="bwg-ai-btn bwg-ai-btn-outline" id="bwg-ai-toggle-add-accounts">+ Add More Ad Accounts</button>' +
+					( ( state.metaConfigured === false || state.googleConfigured === false )
+						? '<button class="bwg-ai-btn bwg-ai-btn-outline" id="bwg-ai-toggle-manual-ads">+ Add Ads Manually</button>'
+						: '' ) +
+				'</div>' +
+				'<div id="bwg-ai-add-accounts-panel" style="display:none;margin-top:16px;">' + addAccountsFormHtml( 'panel' ) + '</div>' +
+				( ( state.metaConfigured === false || state.googleConfigured === false )
+					? '<div id="bwg-ai-manual-ads-panel" style="display:none;margin-top:16px;">' + manualAdsFormHtml( 'panel' ) + '</div>'
+					: '' ) +
 			'</div>'
 		);
 
@@ -661,20 +684,20 @@
 
 		$( '#bwg-ai-confirm-ads' ).on( 'click', submitConfirmAds );
 
-		if ( state.metaConfigured === false ) {
+		$( '#bwg-ai-toggle-add-accounts' ).on( 'click', function () {
+			var $panel = $( '#bwg-ai-add-accounts-panel' );
+			$panel.slideToggle( 200 );
+			$( this ).text( $panel.is( ':hidden' ) ? '+ Add More Ad Accounts' : '− Hide' );
+		} );
+		bindAddAccountsForm( 'panel' );
+
+		if ( state.metaConfigured === false || state.googleConfigured === false ) {
 			$( '#bwg-ai-toggle-manual-ads' ).on( 'click', function () {
 				var $panel = $( '#bwg-ai-manual-ads-panel' );
 				$panel.slideToggle( 200 );
-				$( this ).text( $panel.is( ':hidden' ) ? '+ Add More Ads Manually' : '− Hide' );
+				$( this ).text( $panel.is( ':hidden' ) ? '+ Add Ads Manually' : '− Hide' );
 			} );
 			bindManualAdsForm( 'panel' );
-		} else {
-			$( '#bwg-ai-toggle-add-accounts' ).on( 'click', function () {
-				var $panel = $( '#bwg-ai-add-accounts-panel' );
-				$panel.slideToggle( 200 );
-				$( this ).text( $panel.is( ':hidden' ) ? '+ Add More Ad Accounts' : '− Hide' );
-			} );
-			bindAddAccountsForm( 'panel' );
 		}
 	}
 
@@ -696,9 +719,9 @@
 			: '';
 
 		var imgHtml;
-		if ( ad.ad_image_url ) {
+		if ( ad.ad_image_url || ad.screenshot_url ) {
 			imgHtml = '<div class="bwg-ai-ad-image">' +
-				'<img src="' + esc( ad.ad_image_url ) + '" alt="" loading="lazy"' +
+				'<img src="' + esc( ad.ad_image_url || ad.screenshot_url ) + '" alt="" loading="lazy"' +
 				' onerror="this.parentNode.innerHTML=\'<div class=\\\"bwg-ai-ad-image-ph\\\">No image</div>\';">' +
 				'</div>';
 		} else if ( ad.ad_snapshot_url ) {

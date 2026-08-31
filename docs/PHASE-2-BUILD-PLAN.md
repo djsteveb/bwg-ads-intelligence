@@ -29,44 +29,43 @@ infinite poll.
 | `includes/class-bwg-ai-activator.php` | `ad_snapshot_url`, `source` columns on `wp_bwg_ai_ads`. DB version → `1.1.0`. |
 
 **Deliberately out of scope for M11:** the admin Storage dashboard (still
-references `bwg_ai_entityiq_url`), Google/LinkedIn/TikTok ad surface,
-compliance vision, PDF export. See `docs/PHASE-2-STATUS.md` → "Known
-follow-ups."
+referenced `bwg_ai_entityiq_url` until M12 replaced it), Google/LinkedIn/TikTok
+ad surface, compliance vision, PDF export.
 
 ---
 
-## Milestone 12 — Google Ads Transparency
+## Milestone 12 — Google Ads Transparency + Local Screenshot Storage ✅ Complete
 
 **Exit criteria:** Sessions get Google ad results alongside Meta, surfaced
 the same way in the gallery (confirm/flag, compliance flags run on copy).
+Screenshots produced along the way are stored locally, with an admin
+dashboard for usage stats, ZIP backup/export, delete-by-range, and
+delete-by-age (manual and automatic).
 
-**Open question to resolve at the start of this milestone:** Google's Ads
-Transparency Center has no first-party bulk API equivalent to Meta's
-`ads_archive` (the "Ads Transparency Insights API" referenced in the old
-EntityIQ-era docs was never confirmed generally available). Two paths:
-
-1. **Render-provider abstraction** — a small interface
-   (`BWG_AI_Render_Provider`) with one method,
-   `render( $url ): array{ screenshot_path, html }`, implemented by whichever
-   backend is chosen (a paid screenshot API, e.g. urlbox.io/screenshotone, or
-   a self-hosted headless-browser endpoint). Used to capture the Transparency
-   Center's per-advertiser results page.
-2. If Google ships/confirms a real Transparency API by the time this
-   milestone starts, prefer a direct API call (same pattern as M11) and skip
-   the render-provider entirely for Google.
-
-Whichever path is chosen, do not silently reintroduce an EntityIQ-shaped
-dependency (a job queue + webhook to a service that doesn't exist) — if a
-render provider is needed, it must be a real, currently-reachable external
-API configured with its own credential in this plugin's settings, following
-the M11 pattern (direct call, encrypted-at-rest option, manual fallback when
-unconfigured).
+**Resolved open question:** Google's Ads Transparency Center has no
+first-party bulk API equivalent to Meta's `ads_archive` (the "Ads
+Transparency Insights API" referenced in the old EntityIQ-era docs was never
+confirmed generally available, and still isn't). Built the **render-provider
+abstraction** path: a vendor-agnostic screenshot-render API client capturing
+the Transparency Center's per-advertiser results page, rather than a direct
+API call. Explicitly did **not** reintroduce an EntityIQ-shaped dependency —
+the render provider is a real, currently-reachable external API configured
+with its own encrypted-at-rest credential in this plugin's settings, same
+pattern as M11's Meta token, with a manual-entry fallback when unconfigured.
 
 | File | What it does |
 |---|---|
-| `ads-intel/class-bwg-ai-google-transparency.php` (new) | Fetches Google Transparency results per the resolved approach above. Normalizes into the same ad shape as Meta (`platform = 'google'`). |
-| `ads-intel/class-bwg-ai-ad-surface.php` | Extend `run()` to call both Meta and Google clients, merge results. |
-| `ads-intel/class-bwg-ai-render-provider.php` (new, only if path 1 is chosen) | Thin interface + one concrete implementation. |
+| `ads-intel/class-bwg-ai-render-provider.php` (new) | Vendor-agnostic screenshot-render client — any provider accepting `?url=&access_key=` and returning image bytes (ScreenshotOne, ApiFlash, urlbox.io, etc.). `bwg_ai_screenshot_api_url` / `bwg_ai_screenshot_api_key` settings. |
+| `ads-intel/class-bwg-ai-google-transparency.php` (new) | Builds the Transparency Center domain-search URL from the session's website, captures it via the render provider, saves through the screenshot store, returns one screenshot-backed ad record (`platform = 'google'`) explicitly flagged as a full-page capture, not per-ad detail. |
+| `ads-intel/class-bwg-ai-screenshot-store.php` (new) | Local disk storage (`wp-content/uploads/bwg-ai-screenshots/`, access-blocked), byte tracking via `wp_bwg_ai_ads.screenshot_bytes`, `stats()`, `prune_range()` / `prune_older_than()`, `export_zip()`. See `docs/ARCHITECTURE.md` §2. |
+| `ads-intel/class-bwg-ai-ad-surface.php` | `run()` calls Meta and Google independently (one unconfigured doesn't block the other); `save_manual_ads()` takes a `platform` param. |
+| `ads-intel/class-bwg-ai-rest.php` | New signed `GET /screenshot/{id}` streaming endpoint; `ad-surface-status` reports `meta_configured` + `google_configured` separately; `manual-ads` takes `platform`. |
+| `admin/class-bwg-ai-admin.php` | Storage dashboard rewritten against the local store — usage bar + 7-day chart, ZIP backup/export (`admin-post.php` handler), delete by date range, delete older than N days, daily-maintenance auto-prune via `bwg_ai_screenshot_retention_days`. Old EntityIQ-backed storage code removed. |
+| `ads-intel/assets/ai-form.js` | Manual-entry form gets a platform picker (Meta/Google); ad cards render the signed `screenshot_url` when present. |
+
+**Also removed as part of this milestone:** `bwg_ai_entityiq_url` /
+`bwg_ai_entityiq_secret` (options + settings UI + `update_entityiq_job_id()`)
+— the admin Storage dashboard was their last consumer.
 
 ---
 

@@ -33,13 +33,14 @@ class BWG_AI_Ad_Surface {
 	}
 
 	/**
-	 * Run the Meta Ad Library lookup and save results.
+	 * Run the Meta + Google ad surface lookups and save results.
 	 *
 	 * Hooked to: bwg_ai_run_ad_surface (args: session_id, hints=[])
 	 *
-	 * When no Meta token is configured, no automated lookup is possible —
-	 * the session is left at its current step so the front-end can offer the
-	 * manual-entry flow (paste Ad Library URLs) instead of polling forever.
+	 * Each platform is independent — a platform with no credential
+	 * configured is skipped (logged) rather than blocking the other, and the
+	 * front-end offers manual entry per-platform for whichever wasn't
+	 * automated.
 	 *
 	 * @param int   $session_id
 	 * @param array $hints
@@ -55,11 +56,6 @@ class BWG_AI_Ad_Surface {
 			return;
 		}
 
-		if ( ! BWG_AI_Meta_Ad_Library::is_configured() ) {
-			BWG_AI_Session::log( $session_id, 'meta_token_missing', 'Meta Ad Library token not configured — falling back to manual ad entry.' );
-			return;
-		}
-
 		global $wpdb;
 		$discovered = $wpdb->get_row(
 			$wpdb->prepare(
@@ -69,28 +65,44 @@ class BWG_AI_Ad_Surface {
 		);
 
 		$built_hints = $this->build_hints( $session, $discovered, $hints );
-		$result      = BWG_AI_Meta_Ad_Library::search( $built_hints );
 
-		if ( is_wp_error( $result ) ) {
-			BWG_AI_Session::log( $session_id, 'meta_api_error', 'Meta Ad Library lookup failed: ' . $result->get_error_message() );
-			return;
+		if ( BWG_AI_Meta_Ad_Library::is_configured() ) {
+			$result = BWG_AI_Meta_Ad_Library::search( $built_hints );
+			if ( is_wp_error( $result ) ) {
+				BWG_AI_Session::log( $session_id, 'meta_api_error', 'Meta Ad Library lookup failed: ' . $result->get_error_message() );
+			} else {
+				$this->save_ads( $session_id, $result, 'api' );
+			}
+		} else {
+			BWG_AI_Session::log( $session_id, 'meta_token_missing', 'Meta Ad Library token not configured — falling back to manual ad entry.' );
 		}
 
-		$this->save_ads( $session_id, $result, 'api' );
+		if ( BWG_AI_Google_Transparency::is_configured() ) {
+			$result = BWG_AI_Google_Transparency::search( $session_id, $built_hints );
+			if ( is_wp_error( $result ) ) {
+				BWG_AI_Session::log( $session_id, 'google_render_error', 'Google Ads Transparency capture failed: ' . $result->get_error_message() );
+			} else {
+				$this->save_ads( $session_id, $result, 'api' );
+			}
+		} else {
+			BWG_AI_Session::log( $session_id, 'google_render_not_configured', 'Screenshot API not configured — falling back to manual Google ad entry.' );
+		}
 	}
 
 	/**
-	 * Save ads submitted through the manual-entry flow (used when no Meta
-	 * token is configured, or when the user wants to add ads the search
-	 * missed). Each entry is a pasted Ad Library snapshot URL with optional
-	 * ad copy the user typed in.
+	 * Save ads submitted through the manual-entry flow (used when no
+	 * automated lookup is configured for a platform, or when the user wants
+	 * to add ads the search missed). Each entry is a pasted Ad Library /
+	 * Transparency Center URL with optional ad copy the user typed in.
 	 *
-	 * @param int   $session_id
-	 * @param array $entries  [ { ad_snapshot_url, ad_copy? } ]
+	 * @param int    $session_id
+	 * @param string $platform  'meta' or 'google'.
+	 * @param array  $entries   [ { ad_snapshot_url, ad_copy? } ]
 	 * @return int  Number of ads saved.
 	 */
-	public function save_manual_ads( $session_id, array $entries ) {
+	public function save_manual_ads( $session_id, $platform, array $entries ) {
 		$session_id = absint( $session_id );
+		$platform   = in_array( $platform, [ 'meta', 'google' ], true ) ? $platform : 'meta';
 		$normalized = [];
 
 		foreach ( $entries as $entry ) {
@@ -99,8 +111,8 @@ class BWG_AI_Ad_Surface {
 				continue;
 			}
 			$normalized[] = [
-				'platform'        => 'meta',
-				'ad_id'           => md5( $session_id . '|' . $snapshot_url ),
+				'platform'        => $platform,
+				'ad_id'           => md5( $session_id . '|' . $platform . '|' . $snapshot_url ),
 				'ad_copy'         => sanitize_textarea_field( $entry['ad_copy'] ?? '' ),
 				'ad_snapshot_url' => $snapshot_url,
 				'run_dates'       => '',
@@ -130,13 +142,15 @@ class BWG_AI_Ad_Surface {
 		$saved = 0;
 
 		foreach ( $ads as $ad ) {
-			$platform      = sanitize_text_field( $ad['platform'] ?? 'meta' );
-			$ad_id_ext     = sanitize_text_field( $ad['ad_id'] ?? '' );
-			$advertiser_id = sanitize_text_field( $ad['advertiser_id'] ?? '' );
-			$ad_copy       = sanitize_textarea_field( $ad['ad_copy'] ?? '' );
-			$snapshot_url  = esc_url_raw( $ad['ad_snapshot_url'] ?? '' );
-			$run_dates     = sanitize_text_field( $ad['run_dates'] ?? '' );
-			$spend_range   = sanitize_text_field( $ad['spend_range'] ?? '' );
+			$platform         = sanitize_text_field( $ad['platform'] ?? 'meta' );
+			$ad_id_ext        = sanitize_text_field( $ad['ad_id'] ?? '' );
+			$advertiser_id    = sanitize_text_field( $ad['advertiser_id'] ?? '' );
+			$ad_copy          = sanitize_textarea_field( $ad['ad_copy'] ?? '' );
+			$snapshot_url     = esc_url_raw( $ad['ad_snapshot_url'] ?? '' );
+			$screenshot_path  = sanitize_text_field( $ad['screenshot_path'] ?? '' );
+			$screenshot_bytes = isset( $ad['screenshot_bytes'] ) ? absint( $ad['screenshot_bytes'] ) : null;
+			$run_dates        = sanitize_text_field( $ad['run_dates'] ?? '' );
+			$spend_range      = sanitize_text_field( $ad['spend_range'] ?? '' );
 
 			$flags = $this->run_compliance( $ad_copy, $platform );
 
@@ -149,13 +163,15 @@ class BWG_AI_Ad_Surface {
 					'ad_id'            => $ad_id_ext,
 					'ad_copy'          => $ad_copy,
 					'ad_snapshot_url'  => $snapshot_url,
+					'screenshot_path'  => $screenshot_path,
+					'screenshot_bytes' => $screenshot_bytes,
 					'run_dates'        => $run_dates,
 					'spend_range'      => $spend_range,
 					'compliance_flags' => wp_json_encode( $flags ),
 					'user_confirmed'   => 0,
 					'source'           => $source,
 				],
-				[ '%d', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%d', '%s' ]
+				[ '%d', '%s', '%s', '%s', '%s', '%s', '%s', '%d', '%s', '%s', '%s', '%d', '%s' ]
 			);
 
 			if ( $wpdb->insert_id ) {

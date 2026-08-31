@@ -94,11 +94,11 @@ git push -u origin claude/{milestone-slug}
 
 ## Build Status
 
-**Last completed milestone:** M11 — Fix Meta Ad Library integration (2026-08-31). A Phase 2 scope investigation found EntityIQ (the Node.js service M5's ad-surface job was supposed to call) was never built and has no plan to be. `class-bwg-ai-ad-surface.php` now calls a new `class-bwg-ai-meta-ad-library.php` directly against the Meta Graph API `ads_archive` endpoint — no job queue, no HMAC webhook, no headless browser. Manual-entry fallback (paste Ad Library URLs) when no token is configured. `docs/ARCHITECTURE.md` §1/§5 rewritten; see `docs/PHASE-2-STATUS.md` and `docs/PHASE-2-BUILD-PLAN.md` for the full writeup and what's next (M12–M15).
+**Last completed milestone:** M12 — Google Ads Transparency + local screenshot storage (2026-08-31). Google has no bulk ad-data API like Meta's, so `class-bwg-ai-google-transparency.php` captures the advertiser's Transparency Center results page through a new vendor-agnostic `class-bwg-ai-render-provider.php` (any screenshot-render API with a `?url=&access_key=` shape), manual-entry fallback when unconfigured — same pattern as M11's Meta token. New `class-bwg-ai-screenshot-store.php` stores captures locally (`wp-content/uploads/bwg-ai-screenshots/`, access-blocked, served only via short-lived signed URLs), tracks bytes in the DB, and backs a rewritten admin Storage dashboard: usage stats, ZIP backup/export, delete by date range, delete older than N days (manual + automatic via a retention-days setting). This also finished retiring EntityIQ — `bwg_ai_entityiq_url`/`secret` (the storage dashboard's last consumer) are gone. See `docs/PHASE-2-STATUS.md` and `docs/PHASE-2-BUILD-PLAN.md`.
 
-**Previous milestone:** Cross-repo security audit (2026-07-08) — CAPTCHA fails closed, uninstall option list fixed, five credentials encrypted at rest, joined the BWG suite shared-credential system.
+**Previous milestone:** M11 — Fix Meta Ad Library integration (2026-08-31) — replaced the non-functional EntityIQ job-queue call with a direct Meta Graph API `ads_archive` integration.
 
-**Next milestone to build:** M12 — Google Ads Transparency (see `docs/PHASE-2-BUILD-PLAN.md`)
+**Next milestone to build:** M13 — Claude vision compliance (see `docs/PHASE-2-BUILD-PLAN.md`)
 
 **Milestones:**
 - [x] Planning — docs written, todos set
@@ -115,7 +115,7 @@ git push -u origin claude/{milestone-slug}
 - [x] M10 — Admin panel
 - [x] Security review
 - [x] M11 — Fix Meta Ad Library integration (direct Graph API call, no EntityIQ)
-- [ ] M12 — Google Ads Transparency
+- [x] M12 — Google Ads Transparency (render-provider) + local screenshot storage/backup/retention
 - [ ] M13 — Claude vision compliance
 - [ ] M14 — PDF export + remaining audience reports
 - [ ] M15 — LinkedIn/TikTok (pending ToS spike)
@@ -247,9 +247,9 @@ This plugin does **not** currently have a `bwg-suite-bridge.php` file, so it doe
 >
 > The project is: BWG Ads Intelligence System — a WordPress plugin for auditing treatment center advertisers' ad footprint. Originally spec'd as a two-repo architecture with a separate Node.js EntityIQ extension; that side was never built (see `docs/PHASE-2-STATUS.md`), so all ad-surface/vision/PDF work is now self-contained in this plugin, calling external APIs directly. All architectural decisions are locked in `docs/ARCHITECTURE.md`.
 >
-> **Current status: MVP (M0–M10 + Security Review) complete. M11 (fixed the broken Meta Ad Library integration) complete.**
+> **Current status: MVP (M0–M10 + Security Review) complete. M11 (fixed the broken Meta Ad Library integration) and M12 (Google Ads Transparency + local screenshot storage) complete.**
 >
-> **Next task: M12 — Google Ads Transparency (see `docs/PHASE-2-BUILD-PLAN.md`).**
+> **Next task: M13 — Claude vision compliance (see `docs/PHASE-2-BUILD-PLAN.md`).**
 >
 > Do not add new features beyond `docs/PHASE-2-BUILD-PLAN.md` without a documented spec change.
 
