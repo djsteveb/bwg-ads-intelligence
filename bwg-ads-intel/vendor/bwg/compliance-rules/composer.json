@@ -1,0 +1,25 @@
+{
+    "name": "bwg/compliance-rules",
+    "description": "Shared, versioned healthcare-marketing compliance rule engine consumed by bwg-comp-pl-one and bwg-ads-intelligence.",
+    "type": "library",
+    "license": "proprietary",
+    "require": {
+        "php": ">=7.4"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^9.6"
+    },
+    "autoload": {
+        "psr-4": {
+            "BWG\\ComplianceRules\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "BWG\\ComplianceRules\\Tests\\": "tests/"
+        }
+    },
+    "scripts": {
+        "test": "phpunit"
+    }
+}

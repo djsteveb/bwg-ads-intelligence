@@ -1,0 +1,70 @@
+{
+    "_readme": [
+        "This file locks the dependencies of your project to a known state",
+        "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
+        "This file is @generated automatically"
+    ],
+    "content-hash": "4714ceeb4f3bf700772b297d264b98b1",
+    "packages": [
+        {
+            "name": "bwg/compliance-rules",
+            "version": "dev-main",
+            "source": {
+                "type": "git",
+                "url": "git@github.com:djsteveb/bwg-compliance-rules.git",
+                "reference": "ae624d85dee40f2cc734360e85572a6140d94eeb"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/djsteveb/bwg-compliance-rules/zipball/ae624d85dee40f2cc734360e85572a6140d94eeb",
+                "reference": "ae624d85dee40f2cc734360e85572a6140d94eeb",
+                "shasum": ""
+            },
+            "require": {
+                "php": ">=7.4"
+            },
+            "require-dev": {
+                "phpunit/phpunit": "^9.6"
+            },
+            "default-branch": true,
+            "type": "library",
+            "autoload": {
+                "psr-4": {
+                    "BWG\\ComplianceRules\\": "src/"
+                }
+            },
+            "autoload-dev": {
+                "psr-4": {
+                    "BWG\\ComplianceRules\\Tests\\": "tests/"
+                }
+            },
+            "scripts": {
+                "test": [
+                    "phpunit"
+                ]
+            },
+            "license": [
+                "proprietary"
+            ],
+            "description": "Shared, versioned healthcare-marketing compliance rule engine consumed by bwg-comp-pl-one and bwg-ads-intelligence.",
+            "support": {
+                "source": "https://github.com/djsteveb/bwg-compliance-rules/tree/main",
+                "issues": "https://github.com/djsteveb/bwg-compliance-rules/issues"
+            },
+            "time": "2026-09-12T22:03:24+00:00"
+        }
+    ],
+    "packages-dev": [],
+    "aliases": [],
+    "minimum-stability": "dev",
+    "stability-flags": {
+        "bwg/compliance-rules": 20
+    },
+    "prefer-stable": true,
+    "prefer-lowest": false,
+    "platform": {
+        "php": ">=7.4"
+    },
+    "platform-dev": {},
+    "plugin-api-version": "2.6.0"
+}

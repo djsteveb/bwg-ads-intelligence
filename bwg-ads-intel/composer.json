@@ -1,0 +1,22 @@
+{
+    "name": "djsteveb/bwg-ads-intel",
+    "description": "BWG Ads Intelligence WordPress plugin.",
+    "type": "wordpress-plugin",
+    "license": "proprietary",
+    "repositories": [
+        {
+            "type": "vcs",
+            "url": "https://github.com/djsteveb/bwg-compliance-rules"
+        }
+    ],
+    "require": {
+        "php": ">=7.4",
+        "bwg/compliance-rules": "dev-main"
+    },
+    "config": {
+        "vendor-dir": "vendor",
+        "secure-http": true
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true
+}

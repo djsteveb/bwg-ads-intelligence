@@ -29,9 +29,15 @@ eventually call into this plugin's checks rather than duplicate them.
   gets consumed by a consolidated product, decide which is canonical — don't
   build a third pass at the same problem, and don't feed both into downstream
   consumers as if they were independent signals.
-- [ ] **Extract the 12-rule `BWG_AI_Compliance` ad-copy engine into the shared
-  rule package** alongside `bwg-comp-pl-one`'s site-content compliance rules
-  (see that repo's own TODO doc). One versioned rule source instead of two.
+- [x] **Extract the 12-rule `BWG_AI_Compliance` ad-copy engine into the shared
+  rule package** alongside `bwg-comp-pl-one`'s site-content compliance rules.
+  ✅ Done: [`bwg-compliance-rules`](https://github.com/djsteveb/bwg-compliance-rules)'s
+  `AdCopyRuleSet` now holds this plugin's rule table (all 15 rules across
+  the three severity tiers -- the array held 15, not 12, but that's a
+  pre-existing count mismatch in this TODO's own wording, not something
+  this extraction changed). `BWG_AI_Compliance::analyze_ad_copy()` is now
+  a thin adapter, on branch `track-a/shared-compliance-rules` (not yet
+  merged).
 - [ ] **Generalize past addiction treatment** if the broader healthcare-
   marketing positioning (med spas, therapy, dental, telehealth) is the goal —
   today's rules (bait-availability, "beds available now", 42 CFR Part 2
