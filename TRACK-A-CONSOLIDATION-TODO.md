@@ -42,6 +42,15 @@ eventually call into this plugin's checks rather than duplicate them.
   marketing positioning (med spas, therapy, dental, telehealth) is the goal —
   today's rules (bait-availability, "beds available now", 42 CFR Part 2
   patterns) are written specifically for treatment-center ad copy.
-- [ ] Keep the REST layer (`class-bwg-ai-rest.php`) in mind as the eventual
-  integration point for Track B's gateway service, same as
-  `BWG-Ads-Acount-Audit`'s `bwg-maa/v1` pattern.
+- [x] Keep the REST layer (`class-bwg-ai-rest.php`) in mind as the eventual
+  integration point for Track B's gateway service. ✅ Done:
+  `POST /bwg/v1/ai/compliance/check-ad-copy` (plus a public
+  `GET .../compliance/capabilities` discovery route) lets an external
+  caller run the ad-copy rules and read flags synchronously. Uses a
+  shared-secret-token auth (`X-BWG-Remote-Token`,
+  `bwg_suite_authorize_compliance_rules_request()` in
+  `bwg-suite-bridge.php`) rather than `bwg-maa/v1`'s
+  logged-in+capability+plugin-slug-allowlist pattern, since the caller
+  (Track B's `bwg-content-guardian` gateway) is an external Next.js
+  service, not a WP user or another plugin in the same install. On
+  branch `track-a/rest-surface` (not yet merged).
