@@ -53,6 +53,16 @@ spl_autoload_register( function ( $class ) {
 require_once BWG_AI_DIR . 'includes/class-bwg-ai-security.php';
 require_once BWG_AI_DIR . 'includes/bwg-suite-bridge.php';
 
+// Composer autoloader for the shared bwg/compliance-rules package (Track A
+// item 1). Vendored and committed -- a WordPress install never runs
+// `composer install`, so this file ships inside the plugin zip. Guarded
+// since a dev checkout without `composer install` run yet shouldn't fatal
+// the whole plugin -- BWG_AI_Compliance::analyze_ad_copy() checks
+// class_exists() before calling into it (see that file).
+if ( file_exists( BWG_AI_DIR . 'vendor/autoload.php' ) ) {
+	require_once BWG_AI_DIR . 'vendor/autoload.php';
+}
+
 register_activation_hook( __FILE__, [ 'BWG_AI_Activator', 'activate' ] );
 register_deactivation_hook( __FILE__, [ 'BWG_AI_Activator', 'deactivate' ] );
 
