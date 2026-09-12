@@ -122,6 +122,30 @@ class BWG_AI_Rest {
 			'callback'            => [ $this, 'resume' ],
 			'permission_callback' => '__return_true',
 		] );
+
+		// Track A: "keep the REST layer in mind as the eventual
+		// integration point for Track B's gateway service" -- a
+		// synchronous ad-copy compliance check, for an external caller
+		// (the Content Guardian gateway), not a WP nonce/session-holding
+		// frontend. Auth via the shared
+		// bwg_suite_authorize_compliance_rules_request() helper
+		// (bwg-suite-bridge.php), same shared-secret-token scheme
+		// bwg-comp-pl-one's new compliance/check-content route uses.
+		register_rest_route( $ns, $b . '/compliance/capabilities', [
+			'methods'             => 'GET',
+			'callback'            => [ $this, 'get_compliance_capabilities' ],
+			'permission_callback' => '__return_true',
+		] );
+
+		register_rest_route( $ns, $b . '/compliance/check-ad-copy', [
+			'methods'             => 'POST',
+			'callback'            => [ $this, 'check_ad_copy' ],
+			'permission_callback' => 'bwg_suite_authorize_compliance_rules_request',
+			'args'                => [
+				'ad_copy'  => [ 'required' => true, 'type' => 'string' ],
+				'platform' => [ 'required' => false, 'type' => 'string' ],
+			],
+		] );
 	}
 
 	// -------------------------------------------------------------------------
@@ -134,6 +158,44 @@ class BWG_AI_Rest {
 			return $result;
 		}
 		return true;
+	}
+
+	// -------------------------------------------------------------------------
+	// Compliance-rules-check REST handlers (Track A)
+	// -------------------------------------------------------------------------
+
+	/**
+	 * GET /wp-json/bwg/v1/ai/compliance/capabilities -- public,
+	 * self-describing discovery endpoint, mirroring bwg-maa/v1's own
+	 * /capabilities route.
+	 */
+	public function get_compliance_capabilities() {
+		return new WP_REST_Response( [
+			'plugin'      => 'bwg-ads-intel',
+			'version'     => defined( 'BWG_AI_VERSION' ) ? BWG_AI_VERSION : null,
+			'auth_header' => 'X-BWG-Remote-Token',
+			'endpoints'   => [
+				[ 'method' => 'POST', 'path' => '/bwg/v1/ai/compliance/check-ad-copy' ],
+			],
+		], 200 );
+	}
+
+	/**
+	 * POST /wp-json/bwg/v1/ai/compliance/check-ad-copy -- runs the
+	 * ad-copy rules (now backed by the shared bwg/compliance-rules
+	 * package -- see Track A item 1) against submitted ad copy and
+	 * returns flags synchronously.
+	 *
+	 * @param WP_REST_Request $request
+	 * @return WP_REST_Response
+	 */
+	public function check_ad_copy( WP_REST_Request $request ) {
+		$ad_copy  = (string) $request->get_param( 'ad_copy' );
+		$platform = (string) ( $request->get_param( 'platform' ) ?: 'meta' );
+
+		$flags = BWG_AI_Compliance::analyze_ad_copy( $ad_copy, $platform );
+
+		return new WP_REST_Response( [ 'flags' => $flags ], 200 );
 	}
 
 	// -------------------------------------------------------------------------

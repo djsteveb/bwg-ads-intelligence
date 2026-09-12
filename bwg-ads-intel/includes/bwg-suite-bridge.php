@@ -374,4 +374,32 @@ function bwg_suite_fetch_from_remote( string $domain, array $data_types ): array
 	return $results;
 }
 
+/**
+ * Auth gate for the new compliance-rules-check REST routes (Track A:
+ * "expose a stable REST surface for a future orchestrator to call").
+ * Deliberately separate options from bwg_remote_access_enabled/token
+ * above (the cache-query surface) -- enabling one must not silently open
+ * the other. Modeled on that same shared-secret-token shape rather than
+ * bwg-maa/v1's logged-in+capability+plugin-slug-allowlist scheme: the
+ * caller here is an external service (the Content Guardian gateway), not
+ * a WP user or another plugin running inside the same WP install, so
+ * there is no WP session/Application Password to check a capability
+ * against.
+ */
+function bwg_suite_authorize_compliance_rules_request( WP_REST_Request $request ) {
+	if ( ! get_option( 'bwg_compliance_rules_api_enabled' ) ) {
+		return new WP_Error( 'disabled', 'This endpoint is not enabled.', array( 'status' => 403 ) );
+	}
+
+	$token    = $request->get_header( 'X-BWG-Remote-Token' );
+	$stored   = (string) get_option( 'bwg_compliance_rules_api_token', '' );
+	$expected = bwg_suite_decrypt_secret( $stored );
+
+	if ( empty( $expected ) || empty( $token ) || ! hash_equals( $expected, (string) $token ) ) {
+		return new WP_Error( 'forbidden', 'Unauthorized.', array( 'status' => 403 ) );
+	}
+
+	return true;
+}
+
 endif; // function_exists guard
