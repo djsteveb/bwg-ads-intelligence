@@ -115,6 +115,10 @@ function bwg_cache_ttl( string $data_type ): int {
 		'schema_score'           => 604800,
 		'entity_ids'             => 2592000,
 		'compliance_score'       => 2592000,
+		// Healthcare ad-copy/vision compliance summary (Track A) -- a
+		// distinct key from compliance_score above, which an unrelated
+		// site-speed/security auditor plugin already owns.
+		'healthcare_ad_compliance' => 2592000,
 		'social_presence'        => 604800,
 		'yelp_reviews'           => 604800,
 		'site_metadata'          => 86400,
@@ -136,6 +140,8 @@ function bwg_suite_active_plugins(): array {
 		$active['webring'] = [ 'label' => 'Webring', 'provides' => [ 'places_basic', 'places_full', 'health_check', 'site_metadata', 'screenshot_url', 'social_presence', 'webring_listing' ], 'consumes' => [ 'psi_mobile', 'schema_score', 'compliance_score' ] ];
 	if ( defined( 'ENTITYIQ_VERSION' ) || get_option( 'entityiq_settings' ) !== false )
 		$active['entityiq'] = [ 'label' => 'EntityIQ', 'provides' => [ 'schema_score', 'entity_ids', 'gbp_audit', 'brightlocal_citations', 'dataforseo_local_pack', 'social_presence', 'site_metadata' ], 'consumes' => [ 'psi_mobile', 'places_basic', 'health_check', 'webring_listing' ] ];
+	if ( defined( 'BWG_AI_VERSION' ) || class_exists( 'BWG_AI_Security' ) )
+		$active['adsintel'] = [ 'label' => 'Ads Intelligence', 'provides' => [ 'healthcare_ad_compliance' ], 'consumes' => [] ];
 	return $active;
 }
 

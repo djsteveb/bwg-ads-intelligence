@@ -13,14 +13,17 @@ eventually call into this plugin's checks rather than duplicate them.
 
 ## TODOs for this repo
 
-- [ ] **Start actually publishing to the shared cache.** This plugin joined
-  the suite bridge (copies `bwg-suite-bridge.php`, consumes the shared
-  `google_places_api_key`) but as of now has **zero `bwg_cache_set()` calls
-  anywhere in the codebase** — ad-surface discovery and the M13 Claude-vision
-  compliance results stay local to this plugin's own tables. Publish at least
-  `ad_audit_score`/vision-compliance findings per domain so siblings
-  (`bwg-comp-pl-one`, a future Track B gateway) can read them without
-  re-running the analysis.
+- [x] **Start actually publishing to the shared cache.** ✅ Done:
+  `BWG_AI_Report::generate_all()` now publishes a compact per-domain
+  compliance summary (risk score, flag counts, flagged-ad count, vision-
+  reviewed count) via `bwg_cache_set()` every time a session's reports are
+  generated. Deliberately a new `healthcare_ad_compliance` cache
+  `data_type`, not the existing generic `compliance_score` key -- that key
+  is already owned by an unrelated site-speed/security auditor plugin
+  (`BWG_Compliance_Auditor`) and means something else entirely there;
+  reusing it would have silently collided two unrelated scores under one
+  cache row. Registered in this plugin's own `bwg_suite_active_plugins()`
+  entry (`bwg-suite-bridge.php`) as providing it.
 - [x] **Resolve the duplicate vision/landing-page engine with `BWG_MAA`.**
   ✅ Investigated and closed — the premise didn't hold once actually
   compared. `BWG_MAA_Vision` isn't a duplicate of this repo's `BWG_AI_Vision`
@@ -45,8 +48,7 @@ eventually call into this plugin's checks rather than duplicate them.
   the three severity tiers -- the array held 15, not 12, but that's a
   pre-existing count mismatch in this TODO's own wording, not something
   this extraction changed). `BWG_AI_Compliance::analyze_ad_copy()` is now
-  a thin adapter, on branch `track-a/shared-compliance-rules` (not yet
-  merged).
+  a thin adapter (merged via `track-a/shared-compliance-rules`, #8).
 - [ ] **Generalize past addiction treatment** if the broader healthcare-
   marketing positioning (med spas, therapy, dental, telehealth) is the goal —
   today's rules (bait-availability, "beds available now", 42 CFR Part 2
@@ -61,5 +63,5 @@ eventually call into this plugin's checks rather than duplicate them.
   `bwg-suite-bridge.php`) rather than `bwg-maa/v1`'s
   logged-in+capability+plugin-slug-allowlist pattern, since the caller
   (Track B's `bwg-content-guardian` gateway) is an external Next.js
-  service, not a WP user or another plugin in the same install. On
-  branch `track-a/rest-surface` (not yet merged).
+  service, not a WP user or another plugin in the same install (merged
+  via `track-a/rest-surface`, #9).

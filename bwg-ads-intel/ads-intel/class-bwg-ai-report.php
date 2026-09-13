@@ -63,7 +63,84 @@ class BWG_AI_Report {
 			}
 			$tokens[ $audience ] = $token;
 		}
+
+		self::publish_to_shared_cache( $session_id );
+
 		return $tokens;
+	}
+
+	/**
+	 * Track A: "start actually publishing to the shared cache." Writes a
+	 * compact per-domain compliance summary (risk score + flag counts, the
+	 * same numbers this report already computes) so sibling plugins
+	 * (`bwg-comp-pl-one`, a future Track B gateway) can read the latest
+	 * known compliance posture for a domain without re-running ad-copy/
+	 * vision analysis themselves.
+	 *
+	 * Deliberately its own new `healthcare_ad_compliance` cache data_type,
+	 * not the existing generic `compliance_score` key -- that key is
+	 * already owned by an unrelated site-speed/security auditor plugin
+	 * (`BWG_Compliance_Auditor`, see bwg_suite_active_plugins() below) and
+	 * means something entirely different there; reusing it would silently
+	 * collide two unrelated scores under one cache row.
+	 *
+	 * Best-effort: never blocks report generation on a cache-write failure
+	 * (e.g. the shared cache table not existing on this install).
+	 *
+	 * @param int $session_id
+	 */
+	private static function publish_to_shared_cache( $session_id ) {
+		if ( ! function_exists( 'bwg_cache_set' ) ) {
+			return;
+		}
+
+		global $wpdb;
+		$session_id = absint( $session_id );
+		$session    = BWG_AI_Session::get( $session_id );
+		if ( ! $session || empty( $session->website_url ) ) {
+			return;
+		}
+
+		$ads = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT platform, compliance_flags, vision_analysis
+				 FROM `{$wpdb->prefix}bwg_ai_ads` WHERE session_id = %d",
+				$session_id
+			)
+		);
+		foreach ( $ads as $ad ) {
+			$ad->compliance_flags = json_decode( $ad->compliance_flags, true ) ?? [];
+		}
+
+		$flag_counts = self::count_flags_by_severity( $ads );
+		$risk_score  = self::compute_risk_score( $ads );
+
+		$flagged_ad_count = 0;
+		$vision_reviewed  = 0;
+		foreach ( $ads as $ad ) {
+			if ( ! empty( $ad->compliance_flags ) ) {
+				$flagged_ad_count++;
+			}
+			$vision = json_decode( $ad->vision_analysis ?? '', true );
+			if ( ! empty( $vision['analyzed'] ) ) {
+				$vision_reviewed++;
+			}
+		}
+
+		bwg_cache_set(
+			$session->website_url,
+			'healthcare_ad_compliance',
+			[
+				'risk_score'         => $risk_score,
+				'flag_counts'        => $flag_counts,
+				'total_ads'          => count( $ads ),
+				'flagged_ad_count'   => $flagged_ad_count,
+				'vision_reviewed'    => $vision_reviewed,
+				'session_id'         => $session_id,
+			],
+			'bwg-ads-intel',
+			2
+		);
 	}
 
 	/**
