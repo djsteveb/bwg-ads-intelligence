@@ -72,6 +72,11 @@ class BWG_AI_Admin {
 		register_setting( 'bwg_ai_api', 'bwg_ai_screenshot_api_url',   [ 'sanitize_callback' => 'sanitize_url' ] );
 		register_setting( 'bwg_ai_api', 'bwg_ai_screenshot_api_key',   [ 'sanitize_callback' => [ $this, 'sanitize_and_encrypt_secret' ] ] );
 		register_setting( 'bwg_ai_api', 'bwg_ai_claude_api_key',       [ 'sanitize_callback' => [ $this, 'sanitize_and_encrypt_secret' ] ] );
+		// Vision cost controls -- off by default, capped per run, mirroring
+		// BWG-Ads-Acount-Audit's enable_creative_vision/max_creatives_analyzed
+		// pattern (every analyzed image is an extra Claude API call).
+		register_setting( 'bwg_ai_api', 'bwg_ai_enable_vision',        [ 'sanitize_callback' => static fn( $v ) => ! empty( $v ) ] );
+		register_setting( 'bwg_ai_api', 'bwg_ai_max_vision_per_run',   [ 'sanitize_callback' => 'absint' ] );
 
 		// Storage / Maintenance.
 		register_setting( 'bwg_ai_storage_settings', 'bwg_ai_storage_warning_gb',        [ 'sanitize_callback' => 'absint' ] );

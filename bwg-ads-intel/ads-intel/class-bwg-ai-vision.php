@@ -22,8 +22,9 @@ if ( ! defined( 'ABSPATH' ) ) {
  * codebase and would require site owners to run `composer install`.
  *
  * Called from class-bwg-ai-ad-surface.php::save_ads() right after text
- * compliance, guarded by is_configured() — skipped silently (never blocks
- * ad saving) when no API key is set.
+ * compliance, guarded by is_enabled() — skipped silently (never blocks ad
+ * saving) when no API key is set or the org hasn't opted in, and capped
+ * per run by max_per_run() once opted in (see both methods below).
  */
 class BWG_AI_Vision {
 
@@ -55,6 +56,31 @@ PROMPT;
 	 */
 	public static function is_configured() {
 		return '' !== bwg_ai_get_claude_api_key();
+	}
+
+	/**
+	 * Whether vision analysis should run at all -- a configured API key
+	 * is necessary but not sufficient; the org must also have opted in
+	 * via the "Enable Vision Compliance" setting. Off by default: every
+	 * analyzed image is an extra Claude API call, mirroring
+	 * BWG-Ads-Acount-Audit's enable_creative_vision toggle for the same
+	 * reason (see that plugin's class-bwg-maa-vision.php).
+	 *
+	 * @return bool
+	 */
+	public static function is_enabled() {
+		return self::is_configured() && (bool) get_option( 'bwg_ai_enable_vision', false );
+	}
+
+	/**
+	 * Per-run cap on how many creatives get analyzed, regardless of how
+	 * many ads are found -- same cost-control shape as
+	 * BWG-Ads-Acount-Audit's max_creatives_analyzed.
+	 *
+	 * @return int
+	 */
+	public static function max_per_run() {
+		return max( 1, (int) get_option( 'bwg_ai_max_vision_per_run', 5 ) );
 	}
 
 	/**

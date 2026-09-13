@@ -141,6 +141,12 @@ class BWG_AI_Ad_Surface {
 		$table = $wpdb->prefix . 'bwg_ai_ads';
 		$saved = 0;
 
+		// Cost-control cap (bwg_ai_max_vision_per_run) -- counts actual
+		// vision calls made in this run, not ads processed, so a run
+		// with more ads than the cap just stops adding vision analysis
+		// past that point rather than needing a separate pre-filter pass.
+		$vision_analyses_this_run = 0;
+
 		foreach ( $ads as $ad ) {
 			$platform         = sanitize_text_field( $ad['platform'] ?? 'meta' );
 			$ad_id_ext        = sanitize_text_field( $ad['ad_id'] ?? '' );
@@ -160,24 +166,31 @@ class BWG_AI_Ad_Surface {
 			// Vision compliance (M13) — best-effort, never blocks saving.
 			// May also capture a screenshot of a Meta ad_snapshot_url page
 			// (via the render provider) when nothing was captured already,
-			// so vision gets an image to look at.
+			// so vision gets an image to look at. Opt-in (bwg_ai_enable_vision)
+			// and capped per run (bwg_ai_max_vision_per_run) -- every analyzed
+			// image is an extra Claude API call.
 			$vision_analysis = [ 'analyzed' => false, 'reason' => 'not_configured', 'flags' => [] ];
-			if ( class_exists( 'BWG_AI_Vision' ) && BWG_AI_Vision::is_configured() ) {
-				$ad_for_vision = $ad;
-				if ( $screenshot_path ) {
-					$ad_for_vision['screenshot_path'] = $screenshot_path;
-				}
-				$vision_analysis = BWG_AI_Vision::analyze( $session_id, $platform, $ad_for_vision );
+			if ( class_exists( 'BWG_AI_Vision' ) && BWG_AI_Vision::is_enabled() ) {
+				if ( $vision_analyses_this_run >= BWG_AI_Vision::max_per_run() ) {
+					$vision_analysis = [ 'analyzed' => false, 'reason' => 'run_cap_reached', 'flags' => [] ];
+				} else {
+					$ad_for_vision = $ad;
+					if ( $screenshot_path ) {
+						$ad_for_vision['screenshot_path'] = $screenshot_path;
+					}
+					$vision_analysis = BWG_AI_Vision::analyze( $session_id, $platform, $ad_for_vision );
+					$vision_analyses_this_run++;
 
-				if ( ! empty( $vision_analysis['flags'] ) ) {
-					$flags = array_merge( $flags, $vision_analysis['flags'] );
+					if ( ! empty( $vision_analysis['flags'] ) ) {
+						$flags = array_merge( $flags, $vision_analysis['flags'] );
+					}
+					if ( ! $screenshot_path && ! empty( $vision_analysis['screenshot_path'] ) ) {
+						$screenshot_path  = sanitize_text_field( $vision_analysis['screenshot_path'] );
+						$screenshot_bytes = absint( $vision_analysis['screenshot_bytes'] ?? 0 );
+					}
+					// Don't duplicate the (already large) raw file paths back into the JSON blob.
+					unset( $vision_analysis['screenshot_path'], $vision_analysis['screenshot_bytes'] );
 				}
-				if ( ! $screenshot_path && ! empty( $vision_analysis['screenshot_path'] ) ) {
-					$screenshot_path  = sanitize_text_field( $vision_analysis['screenshot_path'] );
-					$screenshot_bytes = absint( $vision_analysis['screenshot_bytes'] ?? 0 );
-				}
-				// Don't duplicate the (already large) raw file paths back into the JSON blob.
-				unset( $vision_analysis['screenshot_path'], $vision_analysis['screenshot_bytes'] );
 			}
 
 			$wpdb->insert(

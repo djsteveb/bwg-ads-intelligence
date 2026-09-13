@@ -255,6 +255,26 @@ function bwg_ai_settings_api() {
 				</td>
 			</tr>
 			<tr>
+				<th scope="row"><label for="bwg_ai_enable_vision">Enable Vision Compliance</label></th>
+				<td>
+					<label>
+						<input type="checkbox" id="bwg_ai_enable_vision" name="bwg_ai_enable_vision" value="1"
+						       <?php checked( get_option( 'bwg_ai_enable_vision', false ) ); ?>>
+						Analyze ad creative images with Claude vision (requires the API key above)
+					</label>
+					<p class="description">Off by default -- every analyzed image is an extra Claude API call. Text compliance checks are unaffected either way.</p>
+				</td>
+			</tr>
+			<tr>
+				<th scope="row"><label for="bwg_ai_max_vision_per_run">Max Vision Analyses Per Run</label></th>
+				<td>
+					<input type="number" id="bwg_ai_max_vision_per_run" name="bwg_ai_max_vision_per_run" min="1" step="1"
+					       value="<?php echo esc_attr( get_option( 'bwg_ai_max_vision_per_run', 5 ) ); ?>"
+					       class="small-text">
+					<p class="description">Caps how many ad creatives get a vision analysis per discovery/save run, regardless of how many ads are found.</p>
+				</td>
+			</tr>
+			<tr>
 				<th scope="row"><label for="bwg_ai_captcha_site_key">Cloudflare Turnstile Site Key</label></th>
 				<td>
 					<input type="text" id="bwg_ai_captcha_site_key" name="bwg_ai_captcha_site_key"
