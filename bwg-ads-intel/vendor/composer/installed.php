@@ -3,7 +3,7 @@
         'name' => 'djsteveb/bwg-ads-intel',
         'pretty_version' => 'dev-main',
         'version' => 'dev-main',
-        'reference' => 'ccaee4a838022f3a5b2a1fb6923ee838f51d483b',
+        'reference' => '08f71e3a92be2a24708e85d5ed2e931c58e9d187',
         'type' => 'wordpress-plugin',
         'install_path' => __DIR__ . '/../../',
         'aliases' => array(),
@@ -13,7 +13,7 @@
         'bwg/compliance-rules' => array(
             'pretty_version' => 'dev-main',
             'version' => 'dev-main',
-            'reference' => 'f4f89405e5eff54ee7c5c4082702b2b32241c5df',
+            'reference' => '6b08c0876637d7beea757e7a0f131dfcc859d9fe',
             'type' => 'library',
             'install_path' => __DIR__ . '/../bwg/compliance-rules',
             'aliases' => array(
@@ -24,7 +24,7 @@
         'djsteveb/bwg-ads-intel' => array(
             'pretty_version' => 'dev-main',
             'version' => 'dev-main',
-            'reference' => 'ccaee4a838022f3a5b2a1fb6923ee838f51d483b',
+            'reference' => '08f71e3a92be2a24708e85d5ed2e931c58e9d187',
             'type' => 'wordpress-plugin',
             'install_path' => __DIR__ . '/../../',
             'aliases' => array(),

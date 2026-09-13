@@ -5,6 +5,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 use BWG\ComplianceRules\RuleSets\AdCopyRuleSet;
+use BWG\ComplianceRules\RuleSets\EmailSmsRuleSet;
 
 /**
  * Text compliance engine for ad copy.
@@ -87,6 +88,48 @@ class BWG_AI_Compliance {
 			$order = [ 'high' => 0, 'medium' => 1, 'low' => 2 ];
 			return ( $order[ $a['severity'] ] ?? 9 ) <=> ( $order[ $b['severity'] ] ?? 9 );
 		} );
+
+		return $flags;
+	}
+
+	/**
+	 * Analyze an outbound email or SMS message body and return compliance
+	 * flags -- the "extend the gate" roadmap item, sibling to
+	 * analyze_ad_copy() above rather than a variant of it: EmailSmsRuleSet
+	 * covers channel mechanics (SMS STOP/HELP/frequency, email CAN-SPAM
+	 * unsubscribe/address) that ad copy has no equivalent of, plus this
+	 * site's healthcare-vertical legal rules (reused, not reimplemented --
+	 * see EmailSmsRuleSet's own doc comment). No sibling-plugin merge here
+	 * -- BWG_Compliance::check() is specifically an ad-copy check, nothing
+	 * upstream established email/SMS behavior for it to preserve.
+	 *
+	 * Same flag shape as analyze_ad_copy() above.
+	 *
+	 * @param string $content Raw message body text.
+	 * @param string $channel 'email' | 'sms'.
+	 * @return array
+	 */
+	public static function analyze_message( $content, $channel = 'email' ) {
+		$content = (string) $content;
+
+		if ( ! class_exists( EmailSmsRuleSet::class ) ) {
+			return [];
+		}
+
+		$vertical = (string) get_option( 'bwg_ai_healthcare_vertical', 'addiction_treatment' );
+		$findings = EmailSmsRuleSet::forChannel( (string) $channel, $vertical )->evaluate( $content );
+
+		$flags = [];
+		foreach ( $findings as $finding ) {
+			$flags[] = [
+				'rule_id'     => $finding->ruleId,
+				'severity'    => $finding->severity,
+				'category'    => $finding->category,
+				'description' => $finding->description,
+				'excerpt'     => (string) $finding->excerpt,
+				'citation'    => (string) $finding->citation,
+			];
+		}
 
 		return $flags;
 	}

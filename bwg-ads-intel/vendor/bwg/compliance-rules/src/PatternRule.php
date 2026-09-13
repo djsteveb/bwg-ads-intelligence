@@ -42,6 +42,22 @@ final class PatternRule implements Rule
         $this->minLengthForAbsent = $minLengthForAbsent;
     }
 
+    /**
+     * Exposed so a rule set can filter its own rules by category before
+     * merging them into another rule set (e.g. EmailSmsRuleSet pulling in
+     * only AdCopyRuleSet's HIPAA/Legal and Platform policy rules, not its
+     * ad-specific Best practice ones) without re-evaluating content first.
+     */
+    public function getId(): string
+    {
+        return $this->id;
+    }
+
+    public function getCategory(): string
+    {
+        return $this->category;
+    }
+
     public function evaluate(string $content, array $context = []): array
     {
         if (null !== $this->absent) {

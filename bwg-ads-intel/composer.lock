@@ -12,12 +12,12 @@
             "source": {
                 "type": "git",
                 "url": "git@github.com:djsteveb/bwg-compliance-rules.git",
-                "reference": "f4f89405e5eff54ee7c5c4082702b2b32241c5df"
+                "reference": "6b08c0876637d7beea757e7a0f131dfcc859d9fe"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/djsteveb/bwg-compliance-rules/zipball/f4f89405e5eff54ee7c5c4082702b2b32241c5df",
-                "reference": "f4f89405e5eff54ee7c5c4082702b2b32241c5df",
+                "url": "https://api.github.com/repos/djsteveb/bwg-compliance-rules/zipball/6b08c0876637d7beea757e7a0f131dfcc859d9fe",
+                "reference": "6b08c0876637d7beea757e7a0f131dfcc859d9fe",
                 "shasum": ""
             },
             "require": {
@@ -51,7 +51,7 @@
                 "source": "https://github.com/djsteveb/bwg-compliance-rules/tree/main",
                 "issues": "https://github.com/djsteveb/bwg-compliance-rules/issues"
             },
-            "time": "2026-09-13T04:33:33+00:00"
+            "time": "2026-09-13T17:23:05+00:00"
         }
     ],
     "packages-dev": [],

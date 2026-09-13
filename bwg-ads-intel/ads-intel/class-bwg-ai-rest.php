@@ -147,6 +147,22 @@ class BWG_AI_Rest {
 			],
 		] );
 
+		// Extend the gate: email/SMS compliance (TCPA/CTIA + CAN-SPAM
+		// channel-mechanics rules, plus this site's healthcare-vertical
+		// legal rules) -- see BWG_AI_Compliance::analyze_message(). A
+		// sibling route to check-ad-copy rather than a `channel` param
+		// bolted onto it, so check-ad-copy's existing request/response
+		// shape (already relied on by the gateway) never changes.
+		register_rest_route( $ns, $b . '/compliance/check-message', [
+			'methods'             => 'POST',
+			'callback'            => [ $this, 'check_message' ],
+			'permission_callback' => 'bwg_suite_authorize_compliance_rules_request',
+			'args'                => [
+				'content' => [ 'required' => true, 'type' => 'string' ],
+				'channel' => [ 'required' => true, 'type' => 'string', 'enum' => [ 'email', 'sms' ] ],
+			],
+		] );
+
 		// Standalone ad-creative vision check (BWG_AI_Vision::analyze_image() --
 		// no ad-surface-discovery session, just raw image bytes fetched from
 		// image_url). Gated by BWG_AI_Vision::is_enabled() inside the handler,
@@ -216,6 +232,7 @@ class BWG_AI_Rest {
 			'auth_header' => 'X-BWG-Remote-Token',
 			'endpoints'   => [
 				[ 'method' => 'POST', 'path' => '/bwg/v1/ai/compliance/check-ad-copy' ],
+				[ 'method' => 'POST', 'path' => '/bwg/v1/ai/compliance/check-message' ],
 				[ 'method' => 'POST', 'path' => '/bwg/v1/ai/compliance/check-ad-creative' ],
 				[ 'method' => 'POST', 'path' => '/bwg/v1/ai/compliance/watches' ],
 				[ 'method' => 'GET',  'path' => '/bwg/v1/ai/compliance/watches/{id}/new-ads' ],
@@ -237,6 +254,24 @@ class BWG_AI_Rest {
 		$platform = (string) ( $request->get_param( 'platform' ) ?: 'meta' );
 
 		$flags = BWG_AI_Compliance::analyze_ad_copy( $ad_copy, $platform );
+
+		return new WP_REST_Response( [ 'flags' => $flags ], 200 );
+	}
+
+	/**
+	 * POST /wp-json/bwg/v1/ai/compliance/check-message -- runs
+	 * BWG_AI_Compliance::analyze_message() (email/SMS channel-mechanics
+	 * rules + this site's healthcare-vertical legal rules) against a
+	 * submitted email or SMS message body and returns flags synchronously.
+	 *
+	 * @param WP_REST_Request $request
+	 * @return WP_REST_Response
+	 */
+	public function check_message( WP_REST_Request $request ) {
+		$content = (string) $request->get_param( 'content' );
+		$channel = (string) $request->get_param( 'channel' );
+
+		$flags = BWG_AI_Compliance::analyze_message( $content, $channel );
 
 		return new WP_REST_Response( [ 'flags' => $flags ], 200 );
 	}
