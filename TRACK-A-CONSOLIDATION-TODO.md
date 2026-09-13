@@ -21,14 +21,23 @@ eventually call into this plugin's checks rather than duplicate them.
   `ad_audit_score`/vision-compliance findings per domain so siblings
   (`bwg-comp-pl-one`, a future Track B gateway) can read them without
   re-running the analysis.
-- [ ] **Resolve the duplicate vision/landing-page engine with `BWG_MAA`.**
-  `BWG-Ads-Acount-Audit`'s `class-bwg-maa-vision.php` and
-  `class-bwg-maa-landing-page.php` were built independently, days apart, doing
-  essentially the same thing as this repo's own M13 (Claude-vision ad-creative
-  compliance) and M12 (landing-page spider). Before either engine's output
-  gets consumed by a consolidated product, decide which is canonical — don't
-  build a third pass at the same problem, and don't feed both into downstream
-  consumers as if they were independent signals.
+- [x] **Resolve the duplicate vision/landing-page engine with `BWG_MAA`.**
+  ✅ Investigated and closed — the premise didn't hold once actually
+  compared. `BWG_MAA_Vision` isn't a duplicate of this repo's `BWG_AI_Vision`
+  (M13): the former does generic ad-design QA (weak hierarchy, illegible
+  text, missing CTA) with free-text output, the latter does HIPAA/42 CFR
+  Part 2/FTC compliance review with structured `rule_id/severity/category`
+  flags matching the rest of the suite's convention. They're two different
+  checks that happen to both call a vision API, not one check built twice.
+  Likewise, what this repo calls "M12" is actually
+  `class-bwg-ai-google-transparency.php` -- a Google Ads Transparency Center
+  screenshot capture, not a landing-page spider -- so it has no real
+  counterpart in `BWG_MAA_Landing_Page`'s message-match/load-time/pixel
+  checks either. Nothing to dedupe. The one real gap M13 had -- no
+  opt-in toggle or per-run cost cap, unlike `BWG_MAA_Vision`'s
+  `enable_creative_vision`/`max_creatives_analyzed` -- is now closed:
+  `bwg_ai_enable_vision` (off by default) and `bwg_ai_max_vision_per_run`
+  (default 5), enforced in `class-bwg-ai-ad-surface.php::save_ads()`.
 - [x] **Extract the 12-rule `BWG_AI_Compliance` ad-copy engine into the shared
   rule package** alongside `bwg-comp-pl-one`'s site-content compliance rules.
   ✅ Done: [`bwg-compliance-rules`](https://github.com/djsteveb/bwg-compliance-rules)'s
