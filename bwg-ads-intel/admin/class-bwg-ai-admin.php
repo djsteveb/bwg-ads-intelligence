@@ -77,6 +77,11 @@ class BWG_AI_Admin {
 		// pattern (every analyzed image is an extra Claude API call).
 		register_setting( 'bwg_ai_api', 'bwg_ai_enable_vision',        [ 'sanitize_callback' => static fn( $v ) => ! empty( $v ) ] );
 		register_setting( 'bwg_ai_api', 'bwg_ai_max_vision_per_run',   [ 'sanitize_callback' => 'absint' ] );
+		// Track A: "generalize past addiction treatment" -- which
+		// AdCopyRuleSet::forVertical() table check-ad-copy runs. An
+		// unrecognized value falls back to 'addiction_treatment' rather
+		// than trusting arbitrary input all the way to the rule engine.
+		register_setting( 'bwg_ai_api', 'bwg_ai_healthcare_vertical', [ 'sanitize_callback' => [ $this, 'sanitize_healthcare_vertical' ] ] );
 
 		// Storage / Maintenance.
 		register_setting( 'bwg_ai_storage_settings', 'bwg_ai_storage_warning_gb',        [ 'sanitize_callback' => 'absint' ] );
@@ -444,6 +449,18 @@ class BWG_AI_Admin {
 	public function sanitize_email_provider( $value ) {
 		$allowed = [ 'wp_mail', 'sendgrid', 'postmark' ];
 		return in_array( $value, $allowed, true ) ? $value : 'wp_mail';
+	}
+
+	/**
+	 * @see BWG_AI_Admin::register_settings() for why an unrecognized
+	 * value falls back to 'addiction_treatment' rather than passing
+	 * through.
+	 */
+	public function sanitize_healthcare_vertical( $value ) {
+		if ( class_exists( 'BWG\ComplianceRules\HealthcareVertical' ) && \BWG\ComplianceRules\HealthcareVertical::isKnown( (string) $value ) ) {
+			return (string) $value;
+		}
+		return 'addiction_treatment';
 	}
 
 	/**

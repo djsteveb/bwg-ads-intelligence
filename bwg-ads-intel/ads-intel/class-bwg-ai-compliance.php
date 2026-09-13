@@ -61,8 +61,13 @@ class BWG_AI_Compliance {
 			return $flags;
 		}
 
+		// Track A: "generalize past addiction treatment" -- which rule
+		// table runs is a site-level setting (bwg_ai_healthcare_vertical),
+		// defaulting to this plugin's original addiction-treatment scope
+		// so existing installs see no behavior change.
+		$vertical     = (string) get_option( 'bwg_ai_healthcare_vertical', 'addiction_treatment' );
 		$existing_ids = array_column( $flags, 'rule_id' );
-		$findings     = AdCopyRuleSet::create()->evaluate( $ad_copy, [ 'platform' => $platform ], $existing_ids );
+		$findings     = AdCopyRuleSet::forVertical( $vertical )->evaluate( $ad_copy, [ 'platform' => $platform ], $existing_ids );
 
 		foreach ( $findings as $finding ) {
 			$flags[] = [
