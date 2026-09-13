@@ -20,6 +20,7 @@ $tables = [
 	'bwg_ai_reports',
 	'bwg_ai_ratelimits',
 	'bwg_ai_audit_log',
+	'bwg_ai_watches',
 ];
 
 foreach ( $tables as $table ) {

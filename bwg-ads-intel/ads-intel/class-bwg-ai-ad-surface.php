@@ -131,12 +131,17 @@ class BWG_AI_Ad_Surface {
 	 * Persist ads, run compliance on each, advance session step, and fire the
 	 * ads-preview drip email.
 	 *
-	 * @param int    $session_id
-	 * @param array  $ads     Normalized ad objects.
-	 * @param string $source  'api' or 'manual'.
+	 * @param int      $session_id
+	 * @param array    $ads       Normalized ad objects.
+	 * @param string   $source    'api', 'manual', or 'watch'.
+	 * @param int|null $watch_id  Set only for source = 'watch' -- lets
+	 *                            new_ads_for_watch() (Phase 4) correlate
+	 *                            rows back to the watch that found them,
+	 *                            since session_id alone can't (each watch
+	 *                            scan gets its own synthetic session).
 	 * @return int  Number of ads saved.
 	 */
-	private function save_ads( $session_id, $ads, $source = 'api' ) {
+	private function save_ads( $session_id, $ads, $source = 'api', $watch_id = null ) {
 		global $wpdb;
 		$table = $wpdb->prefix . 'bwg_ai_ads';
 		$saved = 0;
@@ -157,6 +162,36 @@ class BWG_AI_Ad_Surface {
 			$screenshot_bytes = isset( $ad['screenshot_bytes'] ) ? absint( $ad['screenshot_bytes'] ) : null;
 			$run_dates        = sanitize_text_field( $ad['run_dates'] ?? '' );
 			$spend_range      = sanitize_text_field( $ad['spend_range'] ?? '' );
+
+			// Idempotency (Phase 4 / watches): a re-scan of the same
+			// advertiser rediscovers ads it already saved in an earlier
+			// run. Check globally by (platform, ad_id) -- not scoped to
+			// this session_id -- so a watch's daily re-scan only ever
+			// adds genuinely new ads instead of duplicating every row on
+			// every run. Mirrors the existing-row check
+			// parse_meta_csv()/parse_google_csv() already do for CSV
+			// imports (see class-bwg-ai-rest.php), just generalized off
+			// the session scope. Manual entries with no stable ad_id are
+			// unaffected -- always inserted.
+			if ( '' !== $ad_id_ext ) {
+				$existing_id = $wpdb->get_var(
+					$wpdb->prepare(
+						"SELECT id FROM `{$table}` WHERE platform = %s AND ad_id = %s LIMIT 1",
+						$platform,
+						$ad_id_ext
+					)
+				);
+				if ( $existing_id ) {
+					$wpdb->update(
+						$table,
+						[ 'run_dates' => $run_dates, 'spend_range' => $spend_range ],
+						[ 'id' => $existing_id ],
+						[ '%s', '%s' ],
+						[ '%d' ]
+					);
+					continue;
+				}
+			}
 
 			$flags = array_map( static function ( $f ) {
 				$f['source'] = $f['source'] ?? 'text';
@@ -210,8 +245,9 @@ class BWG_AI_Ad_Surface {
 					'vision_analysis'  => wp_json_encode( $vision_analysis ),
 					'user_confirmed'   => 0,
 					'source'           => $source,
+					'watch_id'         => $watch_id,
 				],
-				[ '%d', '%s', '%s', '%s', '%s', '%s', '%s', '%d', '%s', '%s', '%s', '%s', '%d', '%s' ]
+				[ '%d', '%s', '%s', '%s', '%s', '%s', '%s', '%d', '%s', '%s', '%s', '%s', '%d', '%s', '%d' ]
 			);
 
 			if ( $wpdb->insert_id ) {
@@ -280,5 +316,180 @@ class BWG_AI_Ad_Surface {
 		}
 
 		return $hints;
+	}
+
+	// -------------------------------------------------------------------------
+	// Watches (Phase 4 / continuous monitoring, Track B's gateway)
+	// -------------------------------------------------------------------------
+
+	/**
+	 * Register a persistent "keep scanning this advertiser" watch,
+	 * independent of any one onboarding session. $hints uses the exact
+	 * shape build_hints() above produces / BWG_AI_Meta_Ad_Library::search()
+	 * and BWG_AI_Google_Transparency::search() already expect
+	 * (business_name, website_url/domain, extra_accounts) -- stored
+	 * as-is so a scan just json_decodes and passes it straight through,
+	 * no translation layer.
+	 *
+	 * @param string $platform      'meta' | 'google'
+	 * @param string $advertiser_id Optional external advertiser identifier.
+	 * @param array  $hints
+	 * @param string $label
+	 * @return int|WP_Error  New watch id, or WP_Error on failure.
+	 */
+	public static function create_watch( $platform, $advertiser_id, array $hints, $label ) {
+		global $wpdb;
+		$platform = in_array( $platform, [ 'meta', 'google' ], true ) ? $platform : 'meta';
+
+		$inserted = $wpdb->insert(
+			$wpdb->prefix . 'bwg_ai_watches',
+			[
+				'platform'      => $platform,
+				'advertiser_id' => sanitize_text_field( $advertiser_id ),
+				'hints'         => wp_json_encode( $hints ),
+				'label'         => sanitize_text_field( $label ),
+			],
+			[ '%s', '%s', '%s', '%s' ]
+		);
+
+		if ( ! $inserted ) {
+			return new WP_Error( 'db_error', 'Failed to create watch.' );
+		}
+
+		return $wpdb->insert_id;
+	}
+
+	/**
+	 * Re-run discovery for one watch and save any newly-found ads.
+	 * save_ads()'s own (platform, ad_id) idempotency check (above) means
+	 * repeat scans only ever add genuinely new ads, never duplicates.
+	 *
+	 * Ad discovery/save is entirely session-scoped machinery
+	 * (BWG_AI_Session::get()/::log(), save_ads()'s own session_id
+	 * bookkeeping) -- rather than thread a nullable session_id through
+	 * every layer, each scan run gets its own lightweight synthetic
+	 * session so the existing pipeline runs completely unchanged. This
+	 * session is never surfaced in the normal onboarding UI/email flows;
+	 * it exists purely so save_ads() has a session_id to write.
+	 *
+	 * @param int $watch_id
+	 */
+	public static function run_watch_scan( $watch_id ) {
+		global $wpdb;
+		$watch = $wpdb->get_row(
+			$wpdb->prepare( "SELECT * FROM `{$wpdb->prefix}bwg_ai_watches` WHERE id = %d", $watch_id )
+		);
+		if ( ! $watch ) {
+			return;
+		}
+
+		$hints = json_decode( $watch->hints, true );
+		$hints = is_array( $hints ) ? $hints : [];
+
+		$session = BWG_AI_Session::create(
+			'watch-' . $watch_id . '@internal.bwg-ai',
+			$hints['website_url'] ?? ( $hints['business_name'] ?? ( 'watch-' . $watch_id ) )
+		);
+		if ( is_wp_error( $session ) ) {
+			return;
+		}
+
+		$surface = new self();
+		$result  = null;
+
+		if ( 'meta' === $watch->platform && class_exists( 'BWG_AI_Meta_Ad_Library' ) && BWG_AI_Meta_Ad_Library::is_configured() ) {
+			$result = BWG_AI_Meta_Ad_Library::search( $hints );
+		} elseif ( 'google' === $watch->platform && class_exists( 'BWG_AI_Google_Transparency' ) && BWG_AI_Google_Transparency::is_configured() ) {
+			$result = BWG_AI_Google_Transparency::search( $session->id, $hints );
+		}
+
+		if ( is_array( $result ) ) {
+			$surface->save_ads( $session->id, $result, 'watch', $watch_id );
+		} elseif ( is_wp_error( $result ) ) {
+			BWG_AI_Session::log( $session->id, 'watch_scan_error', "Watch #{$watch_id} scan failed: " . $result->get_error_message() );
+		}
+
+		$wpdb->update(
+			$wpdb->prefix . 'bwg_ai_watches',
+			[ 'last_scanned_at' => current_time( 'mysql', true ) ],
+			[ 'id' => $watch_id ],
+			[ '%s' ],
+			[ '%d' ]
+		);
+	}
+
+	/**
+	 * Run every registered watch, one at a time -- a failure analyzing
+	 * one advertiser (e.g. a Meta API error) must never block the rest.
+	 * Hooked to the recurring bwg_ai_run_watch_scans cron
+	 * (class-bwg-ai-loader.php).
+	 */
+	public static function run_all_watch_scans() {
+		global $wpdb;
+		$ids = $wpdb->get_col( "SELECT id FROM `{$wpdb->prefix}bwg_ai_watches`" );
+		foreach ( $ids as $watch_id ) {
+			try {
+				self::run_watch_scan( (int) $watch_id );
+			} catch ( \Throwable $e ) {
+				// Never let one advertiser's failure abort the batch.
+				continue;
+			}
+		}
+	}
+
+	/**
+	 * Ads discovered for a watch after $since (by created_at) -- the
+	 * compliance/watches/{id}/new-ads REST route (class-bwg-ai-rest.php).
+	 * compliance_flags/vision_analysis are already computed at discovery
+	 * time (save_ads() runs both checks), so a caller polling this route
+	 * doesn't need to re-run check-ad-copy itself.
+	 *
+	 * @param int         $watch_id
+	 * @param string|null $since  MySQL datetime string, or null for all-time.
+	 * @return array
+	 */
+	public static function new_ads_for_watch( $watch_id, $since = null ) {
+		global $wpdb;
+		$table = $wpdb->prefix . 'bwg_ai_ads';
+
+		if ( $since ) {
+			$rows = $wpdb->get_results(
+				$wpdb->prepare(
+					"SELECT * FROM `{$table}` WHERE watch_id = %d AND created_at > %s ORDER BY created_at ASC",
+					$watch_id,
+					$since
+				)
+			);
+		} else {
+			$rows = $wpdb->get_results(
+				$wpdb->prepare(
+					"SELECT * FROM `{$table}` WHERE watch_id = %d ORDER BY created_at ASC",
+					$watch_id
+				)
+			);
+		}
+
+		return array_map( static function ( $row ) {
+			return [
+				'ad_id'            => $row->ad_id,
+				'platform'         => $row->platform,
+				'ad_copy'          => $row->ad_copy,
+				'ad_snapshot_url'  => $row->ad_snapshot_url,
+				'compliance_flags' => json_decode( $row->compliance_flags, true ) ?: [],
+				'vision_analysis'  => json_decode( $row->vision_analysis, true ) ?: null,
+				'discovered_at'    => $row->created_at,
+			];
+		}, $rows );
+	}
+
+	/**
+	 * @param int $watch_id
+	 * @return bool
+	 */
+	public static function watch_exists( $watch_id ) {
+		global $wpdb;
+		return (bool) $wpdb->get_var(
+			$wpdb->prepare( "SELECT id FROM `{$wpdb->prefix}bwg_ai_watches` WHERE id = %d LIMIT 1", $watch_id )
+		);
 	}
 }

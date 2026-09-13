@@ -19,6 +19,7 @@ class BWG_AI_Activator {
 			'bwg_ai_run_ad_surface',
 			'bwg_ai_send_access_followup',
 			'bwg_ai_daily_maintenance',
+			'bwg_ai_run_watch_scans',
 		];
 		foreach ( $hooks as $hook ) {
 			$timestamp = wp_next_scheduled( $hook );
@@ -121,11 +122,13 @@ class BWG_AI_Activator {
 				user_confirmed   TINYINT        NOT NULL DEFAULT 0,
 				compliance_flags LONGTEXT,
 				vision_analysis  LONGTEXT,
+				watch_id         BIGINT UNSIGNED DEFAULT NULL,
 				created_at       DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP,
 				PRIMARY KEY  (id),
 				KEY session_id (session_id),
 				KEY platform (platform),
-				KEY ad_id (ad_id)
+				KEY ad_id (ad_id),
+				KEY watch_id (watch_id)
 			) $charset;",
 
 			// Per-platform access grant status.
@@ -194,6 +197,23 @@ class BWG_AI_Activator {
 				KEY session_id (session_id),
 				KEY action (action),
 				KEY created_at (created_at)
+			) $charset;",
+
+			// A persistent "keep scanning this advertiser" registration,
+			// independent of any one onboarding session -- what
+			// bwg_ai_run_watch_scans (recurring cron) and the
+			// compliance/watches REST routes operate on (Phase 4 /
+			// continuous monitoring, Track B's gateway).
+			"CREATE TABLE {$p}watches (
+				id             BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+				platform       VARCHAR(32)    NOT NULL DEFAULT '',
+				advertiser_id  VARCHAR(255)   DEFAULT '',
+				hints          LONGTEXT,
+				label          VARCHAR(255)   DEFAULT '',
+				last_scanned_at DATETIME      DEFAULT NULL,
+				created_at     DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP,
+				PRIMARY KEY  (id),
+				KEY platform (platform)
 			) $charset;",
 		];
 	}

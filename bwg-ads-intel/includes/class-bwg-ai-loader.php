@@ -59,6 +59,9 @@ class BWG_AI_Loader {
 		$this->add_action( 'bwg_ai_queue_ad_surface', [ $ad_surface, 'queue_job' ], 10, 2 );
 		$this->add_action( 'bwg_ai_run_ad_surface',   [ $ad_surface, 'run' ],       10, 2 );
 
+		// Phase 4 -- continuous monitoring: re-scan every registered watch.
+		$this->add_action( 'bwg_ai_run_watch_scans', [ 'BWG_AI_Ad_Surface', 'run_all_watch_scans' ] );
+
 		$email = new BWG_AI_Email();
 		$this->add_action( 'bwg_ai_session_created',       [ $email, 'send_save_spot' ] );
 		$this->add_action( 'bwg_ai_send_access_followup',  [ $email, 'send_followups' ] );
@@ -76,6 +79,9 @@ class BWG_AI_Loader {
 		}
 		if ( ! wp_next_scheduled( 'bwg_ai_daily_maintenance' ) ) {
 			wp_schedule_event( time(), 'daily', 'bwg_ai_daily_maintenance' );
+		}
+		if ( ! wp_next_scheduled( 'bwg_ai_run_watch_scans' ) ) {
+			wp_schedule_event( time(), 'daily', 'bwg_ai_run_watch_scans' );
 		}
 	}
 

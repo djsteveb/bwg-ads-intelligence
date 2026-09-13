@@ -162,6 +162,30 @@ class BWG_AI_Rest {
 				'ad_copy'   => [ 'required' => false, 'type' => 'string' ],
 			],
 		] );
+
+
+		// Phase 4 -- continuous monitoring: the gateway registers a
+		// persistent watch (independent of any onboarding session) and
+		// polls it for newly discovered ads. Same shared-secret auth as
+		// the other compliance/* routes -- same caller.
+		register_rest_route( $ns, $b . '/compliance/watches', [
+			'methods'             => 'POST',
+			'callback'            => [ $this, 'create_watch' ],
+			'permission_callback' => 'bwg_suite_authorize_compliance_rules_request',
+			'args'                => [
+				'platform'      => [ 'required' => true, 'type' => 'string' ],
+				'advertiser_id' => [ 'required' => false, 'type' => 'string' ],
+				'hints'         => [ 'required' => false, 'type' => 'object' ],
+				'label'         => [ 'required' => false, 'type' => 'string' ],
+			],
+		] );
+
+		register_rest_route( $ns, $b . '/compliance/watches/(?P<id>\d+)/new-ads', [
+			'methods'             => 'GET',
+			'callback'            => [ $this, 'watch_new_ads' ],
+			'permission_callback' => 'bwg_suite_authorize_compliance_rules_request',
+			'args'                => [ 'id' => [ 'validate_callback' => 'is_numeric' ] ],
+		] );
 	}
 
 	// -------------------------------------------------------------------------
@@ -193,6 +217,8 @@ class BWG_AI_Rest {
 			'endpoints'   => [
 				[ 'method' => 'POST', 'path' => '/bwg/v1/ai/compliance/check-ad-copy' ],
 				[ 'method' => 'POST', 'path' => '/bwg/v1/ai/compliance/check-ad-creative' ],
+				[ 'method' => 'POST', 'path' => '/bwg/v1/ai/compliance/watches' ],
+				[ 'method' => 'GET',  'path' => '/bwg/v1/ai/compliance/watches/{id}/new-ads' ],
 			],
 		], 200 );
 	}
@@ -249,6 +275,69 @@ class BWG_AI_Rest {
 		$result = BWG_AI_Vision::analyze_image( $body, $content_type, $ad_copy );
 
 		return new WP_REST_Response( $result, 200 );
+	}
+
+	/**
+	 * POST /wp-json/bwg/v1/ai/compliance/watches -- registers a persistent
+	 * "keep scanning this advertiser" watch, independent of any onboarding
+	 * session. The gateway calls this once per monitored advertiser and
+	 * stores the returned watch_id for subsequent new-ads polling.
+	 *
+	 * @param WP_REST_Request $request
+	 * @return WP_REST_Response|WP_Error
+	 */
+	public function create_watch( WP_REST_Request $request ) {
+		$platform      = sanitize_text_field( $request->get_param( 'platform' ) );
+		$advertiser_id = sanitize_text_field( $request->get_param( 'advertiser_id' ) ?: '' );
+		$hints         = $request->get_param( 'hints' );
+		$label         = sanitize_text_field( $request->get_param( 'label' ) ?: '' );
+
+		if ( ! in_array( $platform, [ 'meta', 'google' ], true ) ) {
+			return $this->error( 'invalid_platform', 'platform must be meta or google.', 400 );
+		}
+		if ( ! is_array( $hints ) ) {
+			$hints = [];
+		}
+
+		$watch_id = BWG_AI_Ad_Surface::create_watch( $platform, $advertiser_id, $hints, $label );
+		if ( is_wp_error( $watch_id ) ) {
+			return $watch_id;
+		}
+
+		return new WP_REST_Response( [ 'watch_id' => $watch_id ], 201 );
+	}
+
+	/**
+	 * GET /wp-json/bwg/v1/ai/compliance/watches/{id}/new-ads?since=<ISO8601>
+	 * Returns ads discovered for this watch after `since` (by created_at),
+	 * with the compliance_flags/vision_analysis already computed at
+	 * discovery time -- the gateway doesn't need to re-check them.
+	 *
+	 * @param WP_REST_Request $request
+	 * @return WP_REST_Response|WP_Error
+	 */
+	public function watch_new_ads( WP_REST_Request $request ) {
+		$watch_id  = absint( $request->get_param( 'id' ) );
+		$since_raw = sanitize_text_field( (string) ( $request->get_param( 'since' ) ?: '' ) );
+
+		if ( ! BWG_AI_Ad_Surface::watch_exists( $watch_id ) ) {
+			return $this->error( 'watch_not_found', 'Watch not found.', 404 );
+		}
+
+		// Accept ISO 8601 (the gateway's own timestamp format) and convert
+		// to the MySQL DATETIME format new_ads_for_watch()'s query expects.
+		$since = null;
+		if ( $since_raw ) {
+			$timestamp = strtotime( $since_raw );
+			if ( false === $timestamp ) {
+				return $this->error( 'invalid_since', 'since must be a valid ISO 8601 timestamp.', 400 );
+			}
+			$since = gmdate( 'Y-m-d H:i:s', $timestamp );
+		}
+
+		$ads = BWG_AI_Ad_Surface::new_ads_for_watch( $watch_id, $since );
+
+		return new WP_REST_Response( [ 'watch_id' => $watch_id, 'ads' => $ads ], 200 );
 	}
 
 	// -------------------------------------------------------------------------
