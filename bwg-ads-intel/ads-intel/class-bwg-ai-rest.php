@@ -146,6 +146,22 @@ class BWG_AI_Rest {
 				'platform' => [ 'required' => false, 'type' => 'string' ],
 			],
 		] );
+
+		// Standalone ad-creative vision check (BWG_AI_Vision::analyze_image() --
+		// no ad-surface-discovery session, just raw image bytes fetched from
+		// image_url). Gated by BWG_AI_Vision::is_enabled() inside the handler,
+		// not just the shared-secret auth -- an org that hasn't opted into
+		// (and isn't paying for) vision compliance shouldn't have an external
+		// caller able to trigger Claude API calls against its budget.
+		register_rest_route( $ns, $b . '/compliance/check-ad-creative', [
+			'methods'             => 'POST',
+			'callback'            => [ $this, 'check_ad_creative' ],
+			'permission_callback' => 'bwg_suite_authorize_compliance_rules_request',
+			'args'                => [
+				'image_url' => [ 'required' => true, 'type' => 'string' ],
+				'ad_copy'   => [ 'required' => false, 'type' => 'string' ],
+			],
+		] );
 	}
 
 	// -------------------------------------------------------------------------
@@ -176,6 +192,7 @@ class BWG_AI_Rest {
 			'auth_header' => 'X-BWG-Remote-Token',
 			'endpoints'   => [
 				[ 'method' => 'POST', 'path' => '/bwg/v1/ai/compliance/check-ad-copy' ],
+				[ 'method' => 'POST', 'path' => '/bwg/v1/ai/compliance/check-ad-creative' ],
 			],
 		], 200 );
 	}
@@ -196,6 +213,42 @@ class BWG_AI_Rest {
 		$flags = BWG_AI_Compliance::analyze_ad_copy( $ad_copy, $platform );
 
 		return new WP_REST_Response( [ 'flags' => $flags ], 200 );
+	}
+
+	/**
+	 * POST /wp-json/bwg/v1/ai/compliance/check-ad-creative -- fetches
+	 * image_url and runs BWG_AI_Vision::analyze_image() (M13) against it,
+	 * returning flags synchronously. Distinct from check-ad-copy's
+	 * always-on text rules: vision is opt-in and costs a Claude API call
+	 * per image, so this 403s when the org hasn't enabled it, rather
+	 * than silently returning an empty flag list that could be mistaken
+	 * for "checked, nothing found."
+	 *
+	 * @param WP_REST_Request $request
+	 * @return WP_REST_Response|WP_Error
+	 */
+	public function check_ad_creative( WP_REST_Request $request ) {
+		if ( ! class_exists( 'BWG_AI_Vision' ) || ! BWG_AI_Vision::is_enabled() ) {
+			return $this->error( 'vision_disabled', 'Vision compliance is not enabled on this site.', 403 );
+		}
+
+		$image_url = (string) $request->get_param( 'image_url' );
+		$ad_copy   = (string) ( $request->get_param( 'ad_copy' ) ?: '' );
+
+		$image_response = wp_remote_get( $image_url, [ 'timeout' => 20 ] );
+		if ( is_wp_error( $image_response ) || 200 !== (int) wp_remote_retrieve_response_code( $image_response ) ) {
+			return $this->error( 'image_fetch_failed', 'Could not fetch image_url.', 400 );
+		}
+
+		$content_type = wp_remote_retrieve_header( $image_response, 'content-type' );
+		$body         = wp_remote_retrieve_body( $image_response );
+		if ( ! $body || ! $content_type || 0 !== strpos( $content_type, 'image/' ) ) {
+			return $this->error( 'invalid_image', 'image_url did not return an image.', 400 );
+		}
+
+		$result = BWG_AI_Vision::analyze_image( $body, $content_type, $ad_copy );
+
+		return new WP_REST_Response( $result, 200 );
 	}
 
 	// -------------------------------------------------------------------------

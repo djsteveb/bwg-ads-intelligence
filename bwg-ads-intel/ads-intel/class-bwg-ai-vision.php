@@ -127,6 +127,33 @@ PROMPT;
 		return $result;
 	}
 
+	/**
+	 * Standalone entry point for an externally-submitted creative (Track
+	 * A's compliance-rules REST route) -- no session, no
+	 * screenshot-store persistence, no ad-surface-discovery context.
+	 * Deliberately not routed through analyze() above: that method's
+	 * resolve_creative() step is specific to the ad-surface pipeline
+	 * (screenshot store, Meta ad_snapshot_url capture), which doesn't
+	 * apply when a caller already has raw image bytes in hand.
+	 *
+	 * @param string $binary     Raw image bytes.
+	 * @param string $media_type e.g. 'image/png'
+	 * @param string $ad_copy    Optional ad copy text, given as context.
+	 * @return array{analyzed: bool, reason?: string, flags: array}
+	 */
+	public static function analyze_image( $binary, $media_type, $ad_copy = '' ) {
+		if ( ! self::is_configured() ) {
+			return [ 'analyzed' => false, 'reason' => 'not_configured', 'flags' => [] ];
+		}
+
+		$response = self::call_claude( $binary, $media_type, $ad_copy );
+		if ( is_wp_error( $response ) ) {
+			return [ 'analyzed' => false, 'reason' => $response->get_error_code(), 'flags' => [] ];
+		}
+
+		return [ 'analyzed' => true, 'flags' => self::parse_flags( $response ) ];
+	}
+
 	// -------------------------------------------------------------------------
 	// Creative resolution
 	// -------------------------------------------------------------------------
