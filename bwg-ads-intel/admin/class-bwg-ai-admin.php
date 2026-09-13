@@ -82,6 +82,12 @@ class BWG_AI_Admin {
 		// unrecognized value falls back to 'addiction_treatment' rather
 		// than trusting arbitrary input all the way to the rule engine.
 		register_setting( 'bwg_ai_api', 'bwg_ai_healthcare_vertical', [ 'sanitize_callback' => [ $this, 'sanitize_healthcare_vertical' ] ] );
+		// Track B: lets the Content Guardian gateway call this plugin's
+		// check-ad-copy/watches routes (bwg_suite_authorize_compliance_rules_request()
+		// in bwg-suite-bridge.php). The token itself is generated via
+		// handle_generate_compliance_token() below, not typed in here --
+		// this option only controls whether the feature is on at all.
+		register_setting( 'bwg_ai_api', 'bwg_compliance_rules_api_enabled', [ 'sanitize_callback' => static fn( $v ) => ! empty( $v ) ] );
 
 		// Storage / Maintenance.
 		register_setting( 'bwg_ai_storage_settings', 'bwg_ai_storage_warning_gb',        [ 'sanitize_callback' => 'absint' ] );
@@ -470,5 +476,49 @@ class BWG_AI_Admin {
 	 */
 	public function sanitize_and_encrypt_secret( $value ) {
 		return bwg_ai_encrypt_secret( sanitize_text_field( $value ) );
+	}
+
+	// -------------------------------------------------------------------------
+	// Track B: Content Guardian gateway token (bwg_suite_authorize_compliance_rules_request)
+	// -------------------------------------------------------------------------
+
+	/**
+	 * admin-post.php handler: generates a fresh shared-secret token for the
+	 * compliance-rules REST routes, stores it encrypted with the *bridge's*
+	 * own scheme (bwg_suite_encrypt_secret(), not bwg_ai_encrypt_secret() --
+	 * bwg_suite_authorize_compliance_rules_request() decrypts with the
+	 * matching bwg_suite_decrypt_secret()), and stashes the plaintext in a
+	 * short-lived, per-user transient so the settings page can show it
+	 * exactly once -- same "shown once, never again" pattern as a WordPress
+	 * Application Password, since there's no legitimate reason to ever
+	 * display it again after the admin has copied it into the gateway.
+	 */
+	public function handle_generate_compliance_token() {
+		if ( ! current_user_can( 'manage_options' ) || ! check_admin_referer( 'bwg_ai_generate_compliance_token' ) ) {
+			wp_die( esc_html__( 'Insufficient permissions.', 'bwg-ads-intel' ) );
+		}
+
+		$token = bin2hex( random_bytes( 32 ) );
+		update_option( 'bwg_compliance_rules_api_token', bwg_suite_encrypt_secret( $token ) );
+		set_transient( 'bwg_ai_new_compliance_token_' . get_current_user_id(), $token, MINUTE_IN_SECONDS );
+
+		wp_safe_redirect( add_query_arg( 'page', 'bwg-ai-settings', admin_url( 'admin.php' ) ) . '#api' );
+		exit;
+	}
+
+	/**
+	 * admin-post.php handler: revokes the current token (if any) so a
+	 * compromised/leaked value can be invalidated without waiting on a
+	 * rotation the gateway side would have to initiate.
+	 */
+	public function handle_revoke_compliance_token() {
+		if ( ! current_user_can( 'manage_options' ) || ! check_admin_referer( 'bwg_ai_revoke_compliance_token' ) ) {
+			wp_die( esc_html__( 'Insufficient permissions.', 'bwg-ads-intel' ) );
+		}
+
+		delete_option( 'bwg_compliance_rules_api_token' );
+
+		wp_safe_redirect( add_query_arg( 'page', 'bwg-ai-settings', admin_url( 'admin.php' ) ) . '#api' );
+		exit;
 	}
 }

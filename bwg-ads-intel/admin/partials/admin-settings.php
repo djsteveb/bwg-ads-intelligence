@@ -293,6 +293,47 @@ function bwg_ai_settings_api() {
 					<p class="description">Which compliance rule table check-ad-copy runs. "Addiction / Substance Use Treatment" is this plugin's original, most specific rule set (bait-availability, 42 CFR Part 2, admissions-CTA disclaimers); every other vertical runs a broader FTC Act § 5 / HIPAA rule set that doesn't assume a treatment-center context.</p>
 				</td>
 			</tr>
+			<tr id="api">
+				<th scope="row">Content Guardian Gateway API</th>
+				<td>
+					<label>
+						<input type="checkbox" id="bwg_compliance_rules_api_enabled" name="bwg_compliance_rules_api_enabled" value="1" <?php checked( (bool) get_option( 'bwg_compliance_rules_api_enabled' ) ); ?>>
+						Allow the Content Guardian gateway to call this site's compliance-rules API (check-ad-copy, ad-surface watches)
+					</label>
+					<p class="description">Off by default. Turning this on alone does nothing without a token below -- every request must also present it via the <code>X-BWG-Remote-Token</code> header.</p>
+
+					<?php
+					$bwg_ai_new_token = get_transient( 'bwg_ai_new_compliance_token_' . get_current_user_id() );
+					if ( $bwg_ai_new_token ) {
+						delete_transient( 'bwg_ai_new_compliance_token_' . get_current_user_id() );
+					}
+					$bwg_ai_token_configured = '' !== (string) get_option( 'bwg_compliance_rules_api_token', '' );
+					?>
+
+					<?php if ( $bwg_ai_new_token ) : ?>
+						<div class="notice notice-success inline" style="margin:12px 0;padding:10px 12px;">
+							<p><strong>New token generated -- copy it now, it will not be shown again:</strong></p>
+							<p><input type="text" readonly value="<?php echo esc_attr( $bwg_ai_new_token ); ?>" class="large-text code" onclick="this.select();" style="font-family:monospace;"></p>
+							<p class="description">Paste this into the gateway's Connections settings for this site, as the <code>bwg-ads-intel</code> connection's shared secret.</p>
+						</div>
+					<?php elseif ( $bwg_ai_token_configured ) : ?>
+						<p><strong>Status:</strong> A token is configured (hidden -- generate a new one to replace it, which immediately invalidates the old one).</p>
+					<?php else : ?>
+						<p><strong>Status:</strong> No token configured yet -- the API will reject every request until one is generated.</p>
+					<?php endif; ?>
+
+					<p>
+						<a href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin-post.php?action=bwg_ai_generate_compliance_token' ), 'bwg_ai_generate_compliance_token' ) ); ?>" class="button">
+							<?php echo $bwg_ai_token_configured ? esc_html__( 'Generate new token (replaces current)', 'bwg-ads-intel' ) : esc_html__( 'Generate token', 'bwg-ads-intel' ); ?>
+						</a>
+						<?php if ( $bwg_ai_token_configured ) : ?>
+							<a href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin-post.php?action=bwg_ai_revoke_compliance_token' ), 'bwg_ai_revoke_compliance_token' ) ); ?>" class="button" onclick="return confirm('Revoke this token? The gateway will be unable to reach this site until a new one is generated and re-entered there.');">
+								<?php esc_html_e( 'Revoke token', 'bwg-ads-intel' ); ?>
+							</a>
+						<?php endif; ?>
+					</p>
+				</td>
+			</tr>
 			<tr>
 				<th scope="row"><label for="bwg_ai_captcha_site_key">Cloudflare Turnstile Site Key</label></th>
 				<td>

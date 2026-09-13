@@ -381,6 +381,41 @@ function bwg_suite_fetch_from_remote( string $domain, array $data_types ): array
 }
 
 /**
+ * Throttles the compliance-rules REST surface (bwg_suite_authorize_compliance_rules_request()
+ * below), keyed by the direct TCP peer. Deliberately its own small,
+ * dependency-free implementation (WP transients, no new table) rather
+ * than reusing either plugin's own rate-limiter class -- this file is
+ * copy-deployed verbatim into multiple plugins (see the file docblock)
+ * whose rate limiters have incompatible shapes (BWG_AI_Rate_Limiter's
+ * check_endpoint($endpoint, $ip) vs. BWG_Compliance_Rate_Limiter's
+ * can_submit($ip)), so a shared implementation living in the copy-
+ * deployed file itself is the only version guaranteed to exist wherever
+ * this function is called from.
+ *
+ * This protects two things at once: a leaked/stolen token (or a runaway
+ * bug on the caller's side) can't hammer this site's compliance checks
+ * without bound, and a brute-force attempt to guess the token gets
+ * throttled too, checked *before* the token comparison below.
+ *
+ * Caveat: keyed off REMOTE_ADDR, the direct TCP peer -- if this WordPress
+ * site itself sits behind its own CDN/proxy, every caller may appear to
+ * share that proxy's IP, which under-differentiates legitimate traffic
+ * but never opens the limiter up (it fails toward "too strict together,"
+ * never toward "no limit at all").
+ */
+function bwg_suite_compliance_rate_limit( string $ip, int $limit = 60, int $window = 60 ): bool {
+	$key   = 'bwg_suite_crl_' . md5( $ip );
+	$count = (int) get_transient( $key );
+
+	if ( $count >= $limit ) {
+		return false;
+	}
+
+	set_transient( $key, $count + 1, $window );
+	return true;
+}
+
+/**
  * Auth gate for the new compliance-rules-check REST routes (Track A:
  * "expose a stable REST surface for a future orchestrator to call").
  * Deliberately separate options from bwg_remote_access_enabled/token
@@ -395,6 +430,11 @@ function bwg_suite_fetch_from_remote( string $domain, array $data_types ): array
 function bwg_suite_authorize_compliance_rules_request( WP_REST_Request $request ) {
 	if ( ! get_option( 'bwg_compliance_rules_api_enabled' ) ) {
 		return new WP_Error( 'disabled', 'This endpoint is not enabled.', array( 'status' => 403 ) );
+	}
+
+	$ip = isset( $_SERVER['REMOTE_ADDR'] ) ? sanitize_text_field( wp_unslash( $_SERVER['REMOTE_ADDR'] ) ) : 'unknown';
+	if ( ! bwg_suite_compliance_rate_limit( $ip ) ) {
+		return new WP_Error( 'rate_limited', 'Too many requests. Please retry shortly.', array( 'status' => 429 ) );
 	}
 
 	$token    = $request->get_header( 'X-BWG-Remote-Token' );
