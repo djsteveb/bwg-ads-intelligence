@@ -275,6 +275,25 @@ function bwg_ai_settings_api() {
 				</td>
 			</tr>
 			<tr>
+				<th scope="row"><label for="bwg_ai_healthcare_vertical">Healthcare Vertical</label></th>
+				<td>
+					<?php
+					$bwg_ai_current_vertical = get_option( 'bwg_ai_healthcare_vertical', 'addiction_treatment' );
+					$bwg_ai_vertical_labels  = class_exists( 'BWG\ComplianceRules\HealthcareVertical' )
+						? \BWG\ComplianceRules\HealthcareVertical::labels()
+						: [ 'addiction_treatment' => 'Addiction / Substance Use Treatment' ];
+					?>
+					<select id="bwg_ai_healthcare_vertical" name="bwg_ai_healthcare_vertical">
+						<?php foreach ( $bwg_ai_vertical_labels as $bwg_ai_vertical_key => $bwg_ai_vertical_label ) : ?>
+							<option value="<?php echo esc_attr( $bwg_ai_vertical_key ); ?>" <?php selected( $bwg_ai_current_vertical, $bwg_ai_vertical_key ); ?>>
+								<?php echo esc_html( $bwg_ai_vertical_label ); ?>
+							</option>
+						<?php endforeach; ?>
+					</select>
+					<p class="description">Which compliance rule table check-ad-copy runs. "Addiction / Substance Use Treatment" is this plugin's original, most specific rule set (bait-availability, 42 CFR Part 2, admissions-CTA disclaimers); every other vertical runs a broader FTC Act § 5 / HIPAA rule set that doesn't assume a treatment-center context.</p>
+				</td>
+			</tr>
+			<tr>
 				<th scope="row"><label for="bwg_ai_captcha_site_key">Cloudflare Turnstile Site Key</label></th>
 				<td>
 					<input type="text" id="bwg_ai_captcha_site_key" name="bwg_ai_captcha_site_key"

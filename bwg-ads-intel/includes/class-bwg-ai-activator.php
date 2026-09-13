@@ -228,6 +228,11 @@ class BWG_AI_Activator {
 		add_option( 'bwg_ai_claude_api_key', '' );
 		add_option( 'bwg_ai_enable_vision', false );
 		add_option( 'bwg_ai_max_vision_per_run', 5 );
+		// Track A: "generalize past addiction treatment" -- which
+		// AdCopyRuleSet::forVertical() table check-ad-copy runs. Defaults
+		// to this plugin's original scope so existing installs see no
+		// behavior change.
+		add_option( 'bwg_ai_healthcare_vertical', 'addiction_treatment' );
 		add_option( 'bwg_ai_captcha_site_key', '' );
 		add_option( 'bwg_ai_captcha_secret_key', '' );
 		add_option( 'bwg_ai_schedule_url', '' );

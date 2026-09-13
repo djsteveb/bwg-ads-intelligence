@@ -49,10 +49,19 @@ eventually call into this plugin's checks rather than duplicate them.
   pre-existing count mismatch in this TODO's own wording, not something
   this extraction changed). `BWG_AI_Compliance::analyze_ad_copy()` is now
   a thin adapter (merged via `track-a/shared-compliance-rules`, #8).
-- [ ] **Generalize past addiction treatment** if the broader healthcare-
-  marketing positioning (med spas, therapy, dental, telehealth) is the goal —
-  today's rules (bait-availability, "beds available now", 42 CFR Part 2
-  patterns) are written specifically for treatment-center ad copy.
+- [x] **Generalize past addiction treatment.** ✅ Done (decision: broader
+  healthcare-marketing positioning is the goal): `bwg/compliance-rules`
+  gained `AdCopyRuleSet::forVertical()` and a new
+  `genericHealthcareRules()` table for every vertical besides addiction
+  treatment (med spas, therapy, dental, home health, telehealth, general
+  healthcare) -- see that package's own commit for exactly which rules
+  generalize and which don't (42 CFR Part 2 and "beds available now"
+  stay addiction-treatment-only; no new per-vertical rules were invented
+  without real legal research to back them). This plugin now has a
+  `bwg_ai_healthcare_vertical` setting (admin → API settings), defaulting
+  to `addiction_treatment` so existing installs see no behavior change;
+  `BWG_AI_Compliance::analyze_ad_copy()` runs
+  `AdCopyRuleSet::forVertical()` instead of the hardcoded `::create()`.
 - [x] Keep the REST layer (`class-bwg-ai-rest.php`) in mind as the eventual
   integration point for Track B's gateway service. ✅ Done:
   `POST /bwg/v1/ai/compliance/check-ad-copy` (plus a public
