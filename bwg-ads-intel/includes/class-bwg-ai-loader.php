@@ -48,6 +48,8 @@ class BWG_AI_Loader {
 			$this->add_action( 'admin_enqueue_scripts',  [ $admin, 'enqueue_assets' ] );
 			$this->add_action( 'wp_ajax_bwg_ai_test_email', [ $admin, 'handle_test_email_ajax' ] );
 			$this->add_action( 'admin_post_bwg_ai_storage_export', [ $admin, 'handle_storage_export' ] );
+			$this->add_action( 'admin_post_bwg_ai_generate_compliance_token', [ $admin, 'handle_generate_compliance_token' ] );
+			$this->add_action( 'admin_post_bwg_ai_revoke_compliance_token', [ $admin, 'handle_revoke_compliance_token' ] );
 			$this->add_filter( 'plugin_action_links_' . BWG_AI_BASENAME, [ $admin, 'plugin_action_links' ] );
 		}
 
